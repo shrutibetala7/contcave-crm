@@ -17,8 +17,6 @@ export async function GET(request: NextRequest) {
     if (stage) filter.stage = stage as StudioMongo["stage"];
     const city = searchParams.get("city");
     if (city) filter.city = city;
-    const tier = searchParams.get("tier");
-    if (tier) filter.tier = tier as StudioMongo["tier"];
     const q = searchParams.get("q");
     if (q) filter.name = { $regex: q, $options: "i" };
 
@@ -61,7 +59,7 @@ export async function POST(request: NextRequest) {
       // work — lenient (keeps the raw value if it can't be normalized)
       // since studio contacts aren't the dedupe-critical collection contacts[] is.
       contacts: input.contacts.map((c) => ({ ...c, phone: normalizePhone(c.phone) ?? c.phone })),
-      stage: "lead",
+      stage: "not_contacted",
       lastContactedAt: null,
       createdAt: now,
       updatedAt: now,

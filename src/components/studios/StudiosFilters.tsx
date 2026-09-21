@@ -4,7 +4,7 @@ import { useState, type KeyboardEvent } from "react";
 import { useQueryStates, parseAsString } from "nuqs";
 import { FilterChips } from "@/components/FilterChips";
 import { CopyViewButton } from "@/components/CopyViewButton";
-import { STUDIO_STAGES } from "@/lib/enums";
+import { STUDIO_STAGES, STUDIO_STAGE_LABELS } from "@/lib/enums";
 
 export function StudiosFilters() {
   const [params, setParams] = useQueryStates(
@@ -27,7 +27,7 @@ export function StudiosFilters() {
 
   return (
     <div className="space-y-3">
-      <FilterChips label="Filter by stage" param="stage" options={STUDIO_STAGES.map((s) => ({ value: s, label: s.replace(/_/g, " ") }))} />
+      <FilterChips label="Filter by status" param="stage" options={STUDIO_STAGES.map((s) => ({ value: s, label: STUDIO_STAGE_LABELS[s] }))} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <input
           type="search"

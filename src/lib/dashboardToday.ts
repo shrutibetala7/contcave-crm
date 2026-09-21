@@ -2,7 +2,6 @@ import { addDays, differenceInCalendarDays, startOfDay } from "date-fns";
 import { ObjectId } from "mongodb";
 import {
   enquiriesCol,
-  studiosCol,
   contactsCol,
   brandsCol,
   activitiesCol,
@@ -23,17 +22,16 @@ export { TODAY_RANGES } from "@/lib/todayRanges";
 export type DueBucket = "overdue" | "today" | "thisWeek";
 
 export interface DueItem {
-  kind: "enquiry_next_action" | "studio_next_action" | "delay_follow_up" | "new_unactioned";
+  kind: "enquiry_next_action" | "delay_follow_up" | "new_unactioned";
   bucket: DueBucket;
   dueDate: string;
-  entityType: "enquiry" | "studio";
+  entityType: "enquiry";
   entityId: string;
   /** Change Brief v1.1 §B — the row's primary line. Null renders as an amber "no reason recorded". */
   reason: string | null;
-  /** Brand name (enquiry) or studio name — secondary line. */
+  /** Brand name — secondary line. */
   title: string;
-  /** Enquiry code; null for studio items. */
-  code: string | null;
+  code: string;
   ownerId: string | null;
   ownerName: string | null;
   overdueDays: number | null;
@@ -67,18 +65,13 @@ export async function getDueItems(tenantId: string, options: GetDueItemsOptions 
   const weekEnd = addDays(startToday, rangeDays + 1); // +1: "this week" includes today through rangeDays out
 
   const enquiries = await enquiriesCol();
-  const studios = await studiosCol();
   const contacts = await contactsCol();
   const brands = await brandsCol();
 
   const ownerFilter = options.ownerId ? { ownerId: options.ownerId } : {};
 
-  const [dueEnquiries, dueStudios, delayEnquiries, newUnactioned] = await Promise.all([
+  const [dueEnquiries, delayEnquiries, newUnactioned] = await Promise.all([
     enquiries
-      .find({ tenantId, ...ownerFilter, nextActionDate: { $ne: null, $lt: weekEnd } })
-      .limit(300)
-      .toArray(),
-    studios
       .find({ tenantId, ...ownerFilter, nextActionDate: { $ne: null, $lt: weekEnd } })
       .limit(300)
       .toArray(),
@@ -145,26 +138,6 @@ export async function getDueItems(tenantId: string, options: GetDueItemsOptions 
       overdueDays: overdueDaysFor(e.nextActionDate, startToday),
       contactPhone: e.contactId ? phoneByContactId.get(e.contactId) ?? null : null,
       href: `/enquiries/${e._id.toHexString()}`,
-    });
-  }
-
-  for (const s of dueStudios) {
-    if (!s.nextActionDate) continue;
-    const primaryContact = s.contacts.find((c) => c.isPrimary) ?? s.contacts[0];
-    items.push({
-      kind: "studio_next_action",
-      bucket: bucketFor(s.nextActionDate, startToday, startTomorrow),
-      dueDate: s.nextActionDate.toISOString(),
-      entityType: "studio",
-      entityId: s._id.toHexString(),
-      reason: s.nextActionReason ?? null,
-      title: s.name,
-      code: null,
-      ownerId: s.ownerId ?? null,
-      ownerName: s.ownerId ? ownerNameById.get(s.ownerId) ?? null : null,
-      overdueDays: overdueDaysFor(s.nextActionDate, startToday),
-      contactPhone: primaryContact?.phone ?? null,
-      href: `/studios/${s._id.toHexString()}`,
     });
   }
 

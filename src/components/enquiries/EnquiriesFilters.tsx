@@ -33,7 +33,7 @@ export function EnquiriesFilters({ users }: { users: UserOption[] }) {
       <FilterChips
         label="Filter by status"
         param="status"
-        options={ENQUIRY_STATUSES.map((s) => ({ value: s, label: s.replace(/_/g, " ") }))}
+        options={ENQUIRY_STATUSES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ") }))}
       />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <input

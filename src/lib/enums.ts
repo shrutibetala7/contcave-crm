@@ -84,21 +84,20 @@ export const FEEDBACK_ISSUES = [
 ] as const;
 export type FeedbackIssue = (typeof FEEDBACK_ISSUES)[number];
 
-export const STUDIO_STAGES = [
-  "lead",
-  "contacted",
-  "negotiating",
-  "agreement_sent",
-  "onboarding",
-  "active",
-  "not_interested",
-  "paused",
-  "churned",
-] as const;
+/**
+ * A studio is in exactly one of four states. Verified and curated both mean
+ * "onboarded" — the two tiers ContCave lists — so there is no separate tier
+ * field to keep in sync.
+ */
+export const STUDIO_STAGES = ["not_contacted", "in_progress", "verified", "curated"] as const;
 export type StudioStage = (typeof STUDIO_STAGES)[number];
 
-export const STUDIO_TIERS = ["verified", "curated"] as const;
-export type StudioTier = (typeof STUDIO_TIERS)[number];
+export const STUDIO_STAGE_LABELS: Record<StudioStage, string> = {
+  not_contacted: "Not contacted",
+  in_progress: "In progress",
+  verified: "Verified",
+  curated: "Curated",
+};
 
 export const STUDIO_CATEGORIES = [
   "photo",

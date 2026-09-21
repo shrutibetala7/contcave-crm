@@ -6,7 +6,6 @@ import {
   GST_STATUSES,
   STUDIO_CATEGORIES,
   STUDIO_STAGES,
-  STUDIO_TIERS,
 } from "@/lib/enums";
 import { optionalObjectIdString, patchOf } from "@/lib/validation/common";
 
@@ -40,13 +39,7 @@ const onboardingSchema = z.object({
 });
 export type Onboarding = z.infer<typeof onboardingSchema>;
 export const ONBOARDING_FLAG_KEYS = onboardingSchema.keyof().options;
-/** GST doesn't gate the "active" stage transition — everything else does. */
-export const OPTIONAL_ONBOARDING_FLAGS: (keyof Onboarding)[] = ["gst"];
 
-// Plain object schema (not refined) so studioUpdateSchema/studioDocSchema
-// below can still call .partial()/.extend() on it — those aren't available
-// once .refine() turns a schema into a ZodEffects. The two schemas that
-// actually need the nextActionReason refine apply it themselves, below.
 const studioBaseSchema = z.object({
   name: z.string().min(1),
   city: z.string().nullable().optional(),
@@ -54,8 +47,6 @@ const studioBaseSchema = z.object({
   address: z.string().nullable().optional(),
   geo: geoSchema.nullable().optional(),
   categories: z.array(z.enum(STUDIO_CATEGORIES)).default([]),
-  tier: z.enum(STUDIO_TIERS).nullable().optional(),
-  tierNote: z.string().nullable().optional(),
   gstStatus: z.enum(GST_STATUSES).default("unknown"),
   gstin: z.string().nullable().optional(),
   commercialModel: z.enum(COMMERCIAL_MODELS).nullable().optional(),
@@ -76,33 +67,21 @@ const studioBaseSchema = z.object({
   }),
   platformStudioId: z.string().nullable().optional(),
   ownerId: optionalObjectIdString,
-  nextActionDate: z.coerce.date().nullable().optional(),
-  // Change Brief v1.1 §B: required (min 8 chars) whenever nextActionDate is set.
-  nextActionReason: z.string().nullable().optional(),
   tags: z.array(z.string()).default([]),
   notes: z.string().nullable().optional(),
 });
 
-const nextActionReasonRefine = (d: { nextActionDate?: Date | null; nextActionReason?: string | null }) =>
-  d.nextActionDate == null || (d.nextActionReason?.trim().length ?? 0) >= 8;
-const nextActionReasonRefineOpts = {
-  message: "nextActionReason is required (min 8 characters) whenever nextActionDate is set",
-  path: ["nextActionReason"] as string[],
-};
-
-export const studioCreateSchema = studioBaseSchema.refine(nextActionReasonRefine, nextActionReasonRefineOpts);
+export const studioCreateSchema = studioBaseSchema;
 export type StudioCreateInput = z.infer<typeof studioCreateSchema>;
 
 // .partial() is shallow — it only makes top-level keys optional, so nested
 // objects (onboarding, agreement) are overridden explicitly here as
 // partial too. Without this, PATCHing one onboarding flag would reset the
 // other five to their schema defaults (false).
-export const studioUpdateSchema = patchOf(studioBaseSchema)
-  .extend({
-    agreement: patchOf(agreementSchema).optional(),
-    onboarding: patchOf(onboardingSchema).optional(),
-  })
-  .refine(nextActionReasonRefine, nextActionReasonRefineOpts);
+export const studioUpdateSchema = patchOf(studioBaseSchema).extend({
+  agreement: patchOf(agreementSchema).optional(),
+  onboarding: patchOf(onboardingSchema).optional(),
+});
 export type StudioUpdateInput = z.infer<typeof studioUpdateSchema>;
 
 export const studioDocSchema = studioBaseSchema.extend({
@@ -117,7 +96,4 @@ export const studioDocSchema = studioBaseSchema.extend({
 });
 export type StudioDoc = z.infer<typeof studioDocSchema>;
 
-export const studioStageChangeSchema = z.object({
-  to: z.enum(STUDIO_STAGES),
-  note: z.string().nullable().optional(),
-});
+export const studioStageChangeSchema = z.object({ to: z.enum(STUDIO_STAGES) });

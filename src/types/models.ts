@@ -43,7 +43,6 @@ export type {
   DelayCausedBy,
   FeedbackIssue,
   StudioStage,
-  StudioTier,
   StudioCategory,
   GstStatus,
   CommercialModel,

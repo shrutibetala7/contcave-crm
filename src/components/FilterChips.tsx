@@ -36,7 +36,7 @@ export function FilterChips({
   }
 
   const chip = (isActive: boolean) =>
-    `shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+    `shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
       isActive
         ? "border-neutral-900 bg-neutral-900 text-white"
         : "border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100"

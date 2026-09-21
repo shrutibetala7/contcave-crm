@@ -13,7 +13,6 @@ const MIN_REASON_LENGTH = 8;
 
 const KIND: Record<DueItem["kind"], { label: string; icon: IconName; tone: string }> = {
   enquiry_next_action: { label: "Enquiry", icon: "inbox", tone: "text-neutral-500" },
-  studio_next_action: { label: "Studio", icon: "building", tone: "text-neutral-500" },
   delay_follow_up: { label: "Delay follow-up", icon: "clock", tone: "text-orange-700" },
   new_unactioned: { label: "New enquiry", icon: "plus", tone: "text-blue-700" },
 };
@@ -43,8 +42,6 @@ export function DueRow({ item }: { item: DueItem }) {
       const iso = new Date(date).toISOString();
       if (item.kind === "enquiry_next_action" || item.kind === "new_unactioned") {
         await api.patch(`/api/enquiries/${item.entityId}`, { nextActionDate: iso, nextActionReason: reason });
-      } else if (item.kind === "studio_next_action") {
-        await api.patch(`/api/studios/${item.entityId}`, { nextActionDate: iso, nextActionReason: reason });
       } else if (item.kind === "delay_follow_up" && item.delayId) {
         await api.patch(`/api/enquiries/${item.entityId}/delays/${item.delayId}`, {
           followUpOn: iso,

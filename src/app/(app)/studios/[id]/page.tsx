@@ -5,10 +5,8 @@ import { requireSession } from "@/lib/session";
 import { studiosCol, activitiesCol } from "@/lib/db/collections";
 import { serialize, serializeAll } from "@/lib/db/serialize";
 import { toClientSafe } from "@/lib/serializeForClient";
-import { listUsers } from "@/lib/users";
 import { Icon } from "@/components/Icon";
 import { StatusBadge } from "@/components/StatusBadge";
-import { NextActionPanel } from "@/components/NextActionPanel";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { StageControl } from "@/components/studios/StageControl";
 import { StudioDetails } from "@/components/studios/StudioDetails";
@@ -26,14 +24,11 @@ export default async function StudioDetailPage({ params }: { params: Promise<{ i
 
   const studio = serialize(doc);
 
-  const [activityDocs, users] = await Promise.all([
-    (await activitiesCol())
-      .find({ tenantId: session.tenantId, entityType: "studio", entityId: id })
-      .sort({ occurredAt: -1 })
-      .limit(200)
-      .toArray(),
-    listUsers(session.tenantId),
-  ]);
+  const activityDocs = await (await activitiesCol())
+    .find({ tenantId: session.tenantId, entityType: "studio", entityId: id })
+    .sort({ occurredAt: -1 })
+    .limit(200)
+    .toArray();
   const activities = serializeAll(activityDocs);
 
   return (
@@ -45,11 +40,6 @@ export default async function StudioDetailPage({ params }: { params: Promise<{ i
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="text-xl font-semibold tracking-tight text-neutral-900">{studio.name}</h1>
           <StatusBadge status={studio.stage} />
-          {studio.tier && (
-            <span className="rounded-full border border-neutral-300 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
-              {studio.tier}
-            </span>
-          )}
         </div>
       </div>
 
@@ -68,14 +58,7 @@ export default async function StudioDetailPage({ params }: { params: Promise<{ i
         </div>
         <div className="order-first space-y-4 lg:order-none">
           <StageControl studioId={studio.id} currentStage={studio.stage} />
-          <NextActionPanel
-            entityUrl={`/api/studios/${studio.id}`}
-            ownerId={studio.ownerId ?? null}
-            nextActionDate={studio.nextActionDate ? new Date(studio.nextActionDate).toISOString() : null}
-            nextActionReason={studio.nextActionReason ?? null}
-            users={users}
-          />
-          <OnboardingChecklist studioId={studio.id} onboarding={studio.onboarding} tier={studio.tier} />
+          <OnboardingChecklist studioId={studio.id} onboarding={studio.onboarding} />
         </div>
       </div>
     </div>

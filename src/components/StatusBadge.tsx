@@ -12,14 +12,11 @@ const COLORS: Record<string, string> = {
   closed_won: "bg-green-100 text-green-800",
   dormant: "bg-neutral-200 text-neutral-600",
   lost: "bg-red-50 text-red-700",
-  // studio stages
-  lead: "bg-neutral-100 text-neutral-700",
-  agreement_sent: "bg-indigo-50 text-indigo-700",
-  onboarding: "bg-amber-50 text-amber-700",
-  active: "bg-green-100 text-green-800",
-  not_interested: "bg-red-50 text-red-700",
-  paused: "bg-neutral-200 text-neutral-600",
-  churned: "bg-red-50 text-red-700",
+  // studio statuses
+  not_contacted: "bg-neutral-100 text-neutral-700",
+  in_progress: "bg-blue-50 text-blue-700",
+  verified: "bg-green-100 text-green-800",
+  curated: "bg-purple-50 text-purple-700",
 };
 
 export function StatusBadge({ status }: { status: string }) {

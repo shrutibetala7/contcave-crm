@@ -69,7 +69,7 @@ Three additive changes on top of the Phase 1 MVP:
   marker for any field still unconfirmed, with a one-click confirm
   (`POST /api/enquiries/:id/confirm-field`). See
   [`src/lib/parseEnquiryText.ts`](./src/lib/parseEnquiryText.ts).
-- **§B Required reasons** — `nextActionDate` (enquiries, studios) and `followUpOn` (delay
+- **§B Required reasons** — `nextActionDate` (enquiries) and `followUpOn` (delay
   events) now require a `nextActionReason` / `followUpReason` of at least 8 characters in
   the same write — enforced by Zod refinements, not just UI copy. The Today screen leads
   with the reason; a record from before this change (or one where the API was called
@@ -78,6 +78,17 @@ Three additive changes on top of the Phase 1 MVP:
   owner/range toggles live in query params via `nuqs` (`?status=delayed&owner=<id>&sort=-nextActionDate`),
   not component state. Filtered views survive a refresh, are bookmarkable, and step through
   with the browser back button; "Copy view" copies the current URL.
+
+## Studios are deliberately simple
+
+A studio is in one of four states — **Not contacted, In progress, Verified, Curated** —
+set with one click on its page (Verified and Curated both mean onboarded). There are no
+transition rules, tiers or next-action dates on studios; each change is logged on the
+studio's timeline. The onboarding checklist is a plain to-do list. Upgrading an existing
+database: `npm run migrate:studio-stages` (idempotent) maps the old nine stages onto the four.
+
+An enquiry that was scheduled can be marked **lost** directly (a client cancelling a booked
+shoot); once it is *completed* it can't be.
 
 ## What's stubbed vs. working
 

@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/apiClient";
-import { STUDIO_TIERS } from "@/lib/enums";
-import type { Onboarding, StudioTier } from "@/types/models";
+import type { Onboarding } from "@/types/models";
 
 const LABELS: Record<keyof Onboarding, string> = {
   legalDocument: "Legal document",
@@ -18,15 +17,7 @@ const LABELS: Record<keyof Onboarding, string> = {
 
 const KEYS = Object.keys(LABELS) as (keyof Onboarding)[];
 
-export function OnboardingChecklist({
-  studioId,
-  onboarding,
-  tier,
-}: {
-  studioId: string;
-  onboarding: Onboarding;
-  tier: StudioTier | null | undefined;
-}) {
+export function OnboardingChecklist({ studioId, onboarding }: { studioId: string; onboarding: Onboarding }) {
   const router = useRouter();
   // Optimistic local copy: the checkbox reflects the click immediately
   // rather than waiting on a PATCH + router.refresh() round trip, which
@@ -68,40 +59,13 @@ export function OnboardingChecklist({
     void patchOnboarding(next, rollback);
   }
 
-  async function setTier(value: string) {
-    setError(null);
-    try {
-      await api.patch(`/api/studios/${studioId}`, { tier: value || null });
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not update tier");
-    }
-  }
-
   const allChecked = KEYS.every((key) => local[key]);
 
   return (
     <div className="card p-4">
-      <h3 className="mb-3 card-title">Onboarding</h3>
-      <label className="mb-3 block text-xs text-neutral-500">
-        Tier
-        <select defaultValue={tier ?? ""} onChange={(e) => setTier(e.target.value)} className="input mt-1">
-          <option value="">Not set</option>
-          {STUDIO_TIERS.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs text-neutral-500">Checklist</span>
-        <button
-          type="button"
-          onClick={() => setAll(!allChecked)}
-          className="text-xs text-neutral-500 underline hover:text-neutral-900"
-        >
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="card-title">Onboarding checklist</h3>
+        <button type="button" onClick={() => setAll(!allChecked)} className="link-quiet py-1 text-xs">
           {allChecked ? "Clear all" : "Select all"}
         </button>
       </div>
@@ -119,7 +83,7 @@ export function OnboardingChecklist({
           </li>
         ))}
       </ul>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
     </div>
   );
 }

@@ -65,7 +65,6 @@ async function ensureIndexes(db: import("mongodb").Db) {
     .createIndexes([{ key: { tenantId: 1, phone: 1 }, name: "tenant_phone_unique", unique: true }]);
   await db.collection("studios").createIndexes([
     { key: { tenantId: 1, stage: 1, city: 1 }, name: "tenant_stage_city" },
-    { key: { tenantId: 1, nextActionDate: 1 }, name: "tenant_nextAction" },
   ]);
   await db
     .collection("activities")
@@ -163,9 +162,7 @@ async function seedDemoData(db: import("mongodb").Db, userIds: Record<string, Ob
     address: null,
     geo: null,
     categories: ["photo", "cyclorama"],
-    stage: "active",
-    tier: "verified",
-    tierNote: null,
+    stage: "verified",
     gstStatus: "registered",
     gstin: null,
     commercialModel: "commission",
@@ -186,8 +183,6 @@ async function seedDemoData(db: import("mongodb").Db, userIds: Record<string, Ob
     },
     platformStudioId: null,
     ownerId,
-    nextActionDate: null,
-    nextActionReason: null,
     lastContactedAt: now,
     tags: [],
     notes: null,

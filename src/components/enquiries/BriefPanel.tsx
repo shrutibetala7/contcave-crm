@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { format } from "date-fns";
 import { api, ApiError } from "@/lib/apiClient";
 import type { Brief, FieldEvidence } from "@/types/models";
 
@@ -37,9 +38,24 @@ function Row({
   );
 }
 
+/** A single tentative date, a short range, or "Flexible" — whichever was actually set. */
+function formatShootDate(flexible: boolean, dates: (Date | string)[]): string {
+  if (flexible) return "Flexible";
+  if (!dates || dates.length === 0) return "Not set";
+  const sorted = [...dates].map((d) => new Date(d)).sort((a, b) => a.getTime() - b.getTime());
+  if (sorted.length === 1) return format(sorted[0], "d MMM yyyy");
+  return `${format(sorted[0], "d MMM")} – ${format(sorted[sorted.length - 1], "d MMM yyyy")}`;
+}
+
 export function BriefPanel({ enquiryId, brief }: { enquiryId: string; brief: Brief }) {
   const router = useRouter();
   const [busyPath, setBusyPath] = useState<string | null>(null);
+  const [editingDates, setEditingDates] = useState(false);
+  const [flexible, setFlexible] = useState(brief.datesFlexible);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [savingDates, setSavingDates] = useState(false);
+  const [dateError, setDateError] = useState<string | null>(null);
   const evidence = brief.fieldEvidence ?? {};
 
   async function confirm(path: string) {
@@ -54,6 +70,38 @@ export function BriefPanel({ enquiryId, brief }: { enquiryId: string; brief: Bri
       setBusyPath(null);
     }
   }
+
+  function startEditDates() {
+    setDateError(null);
+    setFlexible(brief.datesFlexible);
+    const [d0, d1] = brief.preferredDates ?? [];
+    setDateFrom(d0 ? new Date(d0).toISOString().slice(0, 10) : "");
+    setDateTo(d1 ? new Date(d1).toISOString().slice(0, 10) : "");
+    setEditingDates(true);
+  }
+
+  async function saveDates() {
+    const preferredDates = flexible
+      ? []
+      : [dateFrom, dateTo].filter(Boolean).map((d) => new Date(d).toISOString());
+    if (!flexible && preferredDates.length === 0) {
+      setDateError("Add a date, or mark it flexible.");
+      return;
+    }
+    setSavingDates(true);
+    setDateError(null);
+    try {
+      await api.patch(`/api/enquiries/${enquiryId}`, { brief: { datesFlexible: flexible, preferredDates } });
+      setEditingDates(false);
+      router.refresh();
+    } catch (e) {
+      setDateError(e instanceof ApiError ? e.message : "Could not save");
+    } finally {
+      setSavingDates(false);
+    }
+  }
+
+  const datesUnconfirmed = isUnconfirmed(evidence["brief.datesFlexible"]);
 
   return (
     <div className="card space-y-3 p-4">
@@ -98,12 +146,64 @@ export function BriefPanel({ enquiryId, brief }: { enquiryId: string; brief: Bri
                 }
           }
         />
-        <Row
-          label="Dates flexible"
-          value={brief.datesFlexible ? "Yes" : null}
-          unconfirmed={isUnconfirmed(evidence["brief.datesFlexible"])}
-          onConfirm={busyPath ? undefined : () => confirm("brief.datesFlexible")}
-        />
+
+        <div className={datesUnconfirmed && !editingDates ? "flag-amber-field" : ""}>
+          <dt className="flex items-center justify-between text-xs text-neutral-500">
+            Shoot date
+            <span className="flex items-center gap-2">
+              {datesUnconfirmed && !editingDates && (
+                <button
+                  type="button"
+                  onClick={busyPath ? undefined : () => confirm("brief.datesFlexible")}
+                  className="text-amber-800 underline underline-offset-2 hover:text-amber-950"
+                >
+                  not stated — confirm
+                </button>
+              )}
+              <button type="button" onClick={editingDates ? () => setEditingDates(false) : startEditDates} className="link-quiet">
+                {editingDates ? "Cancel" : "Edit"}
+              </button>
+            </span>
+          </dt>
+          {editingDates ? (
+            <div className="mt-1 space-y-1.5">
+              <label className="flex items-center gap-2 text-sm text-neutral-700">
+                <input type="checkbox" checked={flexible} onChange={(e) => setFlexible(e.target.checked)} />
+                Dates are flexible
+              </label>
+              {!flexible && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+                  <input
+                    type="date"
+                    aria-label="Tentative shoot date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="input w-auto py-1 text-xs"
+                  />
+                  <span>to (optional, for a range)</span>
+                  <input
+                    type="date"
+                    aria-label="End of shoot date range"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="input w-auto py-1 text-xs"
+                  />
+                </div>
+              )}
+              {dateError && (
+                <p role="alert" className="text-xs text-red-700">
+                  {dateError}
+                </p>
+              )}
+              <button onClick={saveDates} disabled={savingDates} className="btn-secondary btn-sm">
+                {savingDates ? "Saving…" : "Save"}
+              </button>
+            </div>
+          ) : (
+            <dd className="text-sm text-neutral-800">{formatShootDate(brief.datesFlexible, brief.preferredDates)}</dd>
+          )}
+        </div>
+
         <Row
           label="Requirements"
           value={brief.requirements.length ? brief.requirements.join(", ") : null}

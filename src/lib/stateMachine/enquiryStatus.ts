@@ -35,11 +35,15 @@ const MAIN_SEQUENCE: EnquiryStatus[] = [
 
 const TERMINAL_STATUSES = new Set<EnquiryStatus>(["closed_won", "lost"]);
 
-// §4.1 allows "lost" up to and including confirmed, and from delayed. It also
-// allows it from "scheduled" here (a decision beyond the spec): a client can
-// cancel a booked shoot before it happens, and forcing that through a fake
-// delay would put a false entry in the delay log. Still not allowed once the
-// shoot is "completed" — at that point it happened.
+// The early funnel, before anything is booked. Any of these can move to any
+// other (a client can arrive already qualified, or go back to negotiating).
+const EARLY = new Set<EnquiryStatus>(["new", "contacted", "qualified", "shortlist_sent", "negotiating"]);
+
+// §4.1 allows "lost" up to and including confirmed, and from delayed. Two
+// deliberate additions: "scheduled" (a client can cancel a booked shoot, and
+// forcing that through a fake delay would put a false entry in the delay log)
+// and "dormant" (a parked enquiry that will never revive should be closable).
+// Still not allowed once the shoot is "completed" — at that point it happened.
 const LOST_ALLOWED_FROM = new Set<EnquiryStatus>([
   "new",
   "contacted",
@@ -49,6 +53,7 @@ const LOST_ALLOWED_FROM = new Set<EnquiryStatus>([
   "confirmed",
   "scheduled",
   "delayed",
+  "dormant",
 ]);
 
 function isAllowedTransition(from: EnquiryStatus, to: EnquiryStatus): boolean {
@@ -56,19 +61,16 @@ function isAllowedTransition(from: EnquiryStatus, to: EnquiryStatus): boolean {
   if (to === "dormant") return !TERMINAL_STATUSES.has(from) && from !== "dormant";
   if (from === "dormant") return to === "contacted";
   if (to === "delayed") return from === "scheduled";
-  // to === "lost" from "delayed" is already covered by LOST_ALLOWED_FROM above.
   if (from === "delayed") return to === "scheduled";
 
   const fromIdx = MAIN_SEQUENCE.indexOf(from);
   const toIdx = MAIN_SEQUENCE.indexOf(to);
   if (fromIdx === -1 || toIdx === -1) return false;
-  return toIdx === fromIdx + 1 || toIdx === fromIdx - 1;
-}
-
-function isBackwardStep(from: EnquiryStatus, to: EnquiryStatus): boolean {
-  const fromIdx = MAIN_SEQUENCE.indexOf(from);
-  const toIdx = MAIN_SEQUENCE.indexOf(to);
-  return fromIdx !== -1 && toIdx !== -1 && toIdx === fromIdx - 1;
+  if (EARLY.has(from) && EARLY.has(to)) return true; // move freely while nothing is booked
+  if (toIdx < fromIdx) return true; // going back is always fine
+  // Forward: one step at a time — except straight to "confirmed" from the early funnel.
+  // Every step from Confirmed on needs real data (booking, date, feedback), checked below.
+  return toIdx === fromIdx + 1 || (EARLY.has(from) && to === "confirmed");
 }
 
 function runGuard(to: EnquiryStatus, enquiry: EnquiryStateInput, payload: StatusChangeInput): void {
@@ -76,64 +78,56 @@ function runGuard(to: EnquiryStatus, enquiry: EnquiryStateInput, payload: Status
     case "confirmed": {
       const picked = enquiry.shortlist.filter((s) => s.outcome === "picked");
       if (picked.length !== 1) {
-        throw new TransitionError(
-          "confirmed requires exactly one shortlist entry with outcome 'picked'"
-        );
+        throw new TransitionError("Pick exactly one studio in the shortlist before confirming.");
       }
       if (!enquiry.booking.platformBookingId && !enquiry.booking.offPlatform) {
-        throw new TransitionError(
-          "confirmed requires booking.platformBookingId or booking.offPlatform"
-        );
+        throw new TransitionError("Add the booking details (or mark it as closed off-platform) before confirming.");
       }
       break;
     }
     case "scheduled": {
       const shootDate = payload.currentShootDate ?? enquiry.schedule.currentShootDate;
       if (!shootDate) {
-        throw new TransitionError("scheduled requires schedule.currentShootDate");
+        throw new TransitionError("Add the shoot date first.");
       }
       break;
     }
     case "completed": {
       const shootDate = enquiry.schedule.currentShootDate;
       if (!shootDate || shootDate.getTime() > Date.now()) {
-        throw new TransitionError("completed requires schedule.currentShootDate to be in the past");
+        throw new TransitionError("The shoot date hasn't passed yet, so this can't be completed.");
       }
       break;
     }
     case "closed_won": {
       const collectedAt = enquiry.feedback?.client?.collectedAt;
       if (!collectedAt && !payload.feedbackWaived) {
-        throw new TransitionError(
-          "closed_won requires feedback.client.collectedAt, or feedbackWaived: true with a note"
-        );
+        throw new TransitionError("Save the client's feedback first, or skip it with a reason.");
       }
       if (payload.feedbackWaived && !payload.feedbackWaivedNote) {
-        throw new TransitionError("feedbackWaived requires feedbackWaivedNote");
+        throw new TransitionError("Say why the feedback is being skipped.");
       }
       break;
     }
     case "lost": {
       if (!payload.lossReason) {
-        throw new TransitionError("lost requires lossReason");
+        throw new TransitionError("Choose why this enquiry was lost.");
       }
       break;
     }
     case "dormant": {
       if (!payload.nextActionDate) {
-        throw new TransitionError("dormant requires nextActionDate (a revival date)");
+        throw new TransitionError("Set a date to revisit this enquiry.");
       }
       // Change Brief v1.1 §B: a date with no reason is a date with no context.
       if ((payload.nextActionReason?.trim().length ?? 0) < 8) {
-        throw new TransitionError("dormant requires nextActionReason (min 8 characters)");
+        throw new TransitionError("Say why it's parked (at least 8 characters).");
       }
       break;
     }
     case "delayed": {
       if (!enquiry.schedule.delayEvents || enquiry.schedule.delayEvents.length === 0) {
-        throw new TransitionError(
-          "delayed requires a delay event — POST /api/enquiries/:id/delays first"
-        );
+        throw new TransitionError("Log the delay in the Delay log — that marks the shoot as delayed.");
       }
       break;
     }
@@ -154,16 +148,13 @@ export function assertValidTransition(
   const from = enquiry.status;
 
   if (from === target) {
-    throw new TransitionError(`Enquiry is already ${target}`);
+    throw new TransitionError("It already has that status.");
   }
   if (TERMINAL_STATUSES.has(from)) {
-    throw new TransitionError(`Cannot transition out of terminal status ${from}`);
+    throw new TransitionError("This enquiry is closed, so its status can no longer change.");
   }
   if (!isAllowedTransition(from, target)) {
-    throw new TransitionError(`Cannot move enquiry from ${from} to ${target}`);
-  }
-  if (isBackwardStep(from, target) && !payload.note) {
-    throw new TransitionError("A note is required when moving a status backward");
+    throw new TransitionError(`An enquiry can't go from ${from.replace(/_/g, " ")} to ${target.replace(/_/g, " ")} directly.`);
   }
 
   runGuard(target, enquiry, payload);
@@ -205,12 +196,4 @@ export function assertValidTransition(
 export function allowedNextStatuses(from: EnquiryStatus): EnquiryStatus[] {
   if (TERMINAL_STATUSES.has(from)) return [];
   return ENQUIRY_STATUSES.filter((to) => to !== from && isAllowedTransition(from, to));
-}
-
-/** The single "keep going" step from `from`, if there is one. */
-export function forwardStatus(from: EnquiryStatus): EnquiryStatus | null {
-  if (from === "dormant") return "contacted";
-  if (from === "delayed") return "scheduled";
-  const idx = MAIN_SEQUENCE.indexOf(from);
-  return idx >= 0 && idx < MAIN_SEQUENCE.length - 1 ? MAIN_SEQUENCE[idx + 1] : null;
 }

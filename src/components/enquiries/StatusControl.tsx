@@ -3,29 +3,32 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/apiClient";
-import { Icon } from "@/components/Icon";
-import { StatusBadge } from "@/components/StatusBadge";
-import { LOSS_REASONS, type EnquiryStatus } from "@/lib/enums";
-import { allowedNextStatuses, forwardStatus } from "@/lib/stateMachine/enquiryStatus";
+import { ENQUIRY_STATUSES, LOSS_REASONS, type EnquiryStatus } from "@/lib/enums";
+import { allowedNextStatuses } from "@/lib/stateMachine/enquiryStatus";
 
 const label = (s: string) => s.replace(/_/g, " ");
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const statusLabel = (s: string) => cap(label(s));
 
-// What each guarded move needs, said before the user hits the wall rather than after.
-const HINTS: Partial<Record<EnquiryStatus, string>> = {
-  confirmed: "Needs one studio marked “picked” in the shortlist, and a booking (or off-platform) set.",
-  scheduled: "Needs a shoot date.",
-  completed: "The shoot date must already be in the past.",
-  closed_won: "Needs client feedback saved, or feedback waived with a reason.",
-};
-
-// Forward steps with no guard: one click, no form.
-const DIRECT = new Set<EnquiryStatus>(["contacted", "qualified", "shortlist_sent", "negotiating", "feedback_pending"]);
-
-export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string; currentStatus: EnquiryStatus }) {
+/**
+ * The status is one dropdown. Picking a status applies it straight away —
+ * unless that move needs a piece of information (why it was lost, when to
+ * revisit a parked enquiry, the shoot date, why feedback is skipped), in
+ * which case a small form opens first. Only statuses the enquiry can actually
+ * move to are listed; the rest is enforced on the server with plain-language errors.
+ */
+export function StatusControl({
+  enquiryId,
+  currentStatus,
+  shootDate,
+}: {
+  enquiryId: string;
+  currentStatus: EnquiryStatus;
+  /** ISO date of the current shoot date, if one is already set. */
+  shootDate: string | null;
+}) {
   const router = useRouter();
-  const [to, setTo] = useState<EnquiryStatus | "">("");
-  const [note, setNote] = useState("");
+  const [pending, setPending] = useState<EnquiryStatus | null>(null);
   const [lossReason, setLossReason] = useState("");
   const [lossNote, setLossNote] = useState("");
   const [competitorName, setCompetitorName] = useState("");
@@ -37,20 +40,19 @@ export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const forward = forwardStatus(currentStatus);
-  const allowed = allowedNextStatuses(currentStatus);
-  // "delayed" is entered by logging a delay (which needs a reason and follow-up), never from this menu.
-  const others = allowed.filter((s) => s !== "delayed" && s !== forward);
-  const isBackward = to !== "" && to !== forward && !["lost", "dormant"].includes(to) && allowed.includes(to);
+  // "delayed" is set by logging a delay (which needs a reason and a follow-up), never from here.
+  const options: EnquiryStatus[] = allowedNextStatuses(currentStatus).filter((s) => s !== "delayed");
+  const list = ENQUIRY_STATUSES.filter((s) => s === currentStatus || options.includes(s));
 
-  async function apply(target: EnquiryStatus | "" = to) {
-    if (!target) return;
+  const needsDetails = (to: EnquiryStatus) =>
+    to === "lost" || to === "dormant" || to === "closed_won" || (to === "scheduled" && !shootDate);
+
+  async function apply(to: EnquiryStatus) {
     setBusy(true);
     setError(null);
     try {
       await api.post(`/api/enquiries/${enquiryId}/status`, {
-        to: target,
-        note: note || null,
+        to,
         lossReason: lossReason || null,
         lossNote: lossNote || null,
         competitorName: competitorName || null,
@@ -60,151 +62,133 @@ export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string;
         feedbackWaived,
         feedbackWaivedNote: feedbackWaivedNote || null,
       });
-      setTo("");
-      setNote("");
+      setPending(null);
       router.refresh();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not change status");
+      setError(e instanceof ApiError ? e.message : "Could not change the status.");
     } finally {
       setBusy(false);
     }
   }
 
-  function advance() {
-    if (!forward) return;
-    if (DIRECT.has(forward)) void apply(forward);
-    else setTo(forward);
+  function choose(to: EnquiryStatus) {
+    setError(null);
+    if (to === currentStatus) {
+      setPending(null);
+    } else if (needsDetails(to)) {
+      setPending(to);
+    } else {
+      setPending(null);
+      void apply(to);
+    }
   }
+
+  const closed = options.length === 0;
 
   return (
     <div className="card space-y-3 p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="card-title">Status</h3>
-        <StatusBadge status={currentStatus} />
-      </div>
+      <h3 className="card-title">Status</h3>
 
-      {allowed.length === 0 ? (
-        <p className="text-sm text-neutral-500">This enquiry is closed — no further moves.</p>
-      ) : (
-        <>
-          {forward && (
-            <button onClick={advance} disabled={busy} className="btn-primary w-full justify-between">
-              <span>Move to {label(forward)}</span>
-              <Icon name="arrow" className="size-4" />
-            </button>
-          )}
-          {others.length > 0 && (
-            <select
-              aria-label="Other status moves"
-              value={to && to !== forward ? to : ""}
-              onChange={(e) => setTo(e.target.value as EnquiryStatus)}
-              className="input"
-            >
-              <option value="">Other move…</option>
-              {others.map((s) => (
-                <option key={s} value={s}>
-                  {cap(label(s))}
-                </option>
-              ))}
-            </select>
-          )}
-          {currentStatus === "scheduled" && (
-            <p className="text-xs text-neutral-500">To mark a shoot delayed, log it in the Delay log.</p>
-          )}
-        </>
+      <select
+        aria-label="Status"
+        value={pending ?? currentStatus}
+        onChange={(e) => choose(e.target.value as EnquiryStatus)}
+        disabled={busy || closed}
+        className="input"
+      >
+        {list.map((s) => (
+          <option key={s} value={s}>
+            {statusLabel(s)}
+          </option>
+        ))}
+      </select>
+
+      {closed && <p className="text-xs text-neutral-500">This enquiry is closed, so its status can no longer change.</p>}
+      {currentStatus === "scheduled" && (
+        <p className="text-xs text-neutral-500">If the shoot slips, log it in the Delay log.</p>
       )}
 
-      {to && (
+      {pending && (
         <div className="space-y-2 border-t border-neutral-100 pt-3">
-          <p className="text-sm font-medium text-neutral-900">Move to {label(to)}</p>
-          {HINTS[to] && <p className="text-xs text-neutral-600">{HINTS[to]}</p>}
+          <p className="text-sm font-medium text-neutral-900">Change to {label(pending)}</p>
 
-          <label className="block text-xs text-neutral-600">
-            Note {isBackward && <span className="text-amber-800">(required for a backward move)</span>}
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input mt-1" />
-          </label>
-
-          {to === "lost" && (
+          {pending === "lost" && (
             <>
               <label className="block text-xs text-neutral-600">
-                Loss reason (required)
+                Why was it lost?
                 <select value={lossReason} onChange={(e) => setLossReason(e.target.value)} className="input mt-1">
                   <option value="">Choose a reason…</option>
                   {LOSS_REASONS.map((r) => (
                     <option key={r} value={r}>
-                      {cap(label(r))}
+                      {statusLabel(r)}
                     </option>
                   ))}
                 </select>
               </label>
               {lossReason === "chose_competitor" && (
                 <label className="block text-xs text-neutral-600">
-                  Competitor
+                  Which competitor?
                   <input value={competitorName} onChange={(e) => setCompetitorName(e.target.value)} className="input mt-1" />
                 </label>
               )}
               <label className="block text-xs text-neutral-600">
-                Loss note
+                Note (optional)
                 <input value={lossNote} onChange={(e) => setLossNote(e.target.value)} className="input mt-1" />
               </label>
             </>
           )}
 
-          {to === "dormant" && (
+          {pending === "dormant" && (
             <>
               <label className="block text-xs text-neutral-600">
-                Revival date (required)
+                Revisit on
                 <input type="date" value={nextActionDate} onChange={(e) => setNextActionDate(e.target.value)} className="input mt-1" />
               </label>
               <label className="block text-xs text-neutral-600">
-                Why parked? (required, min 8 characters)
+                Why is it parked? (at least 8 characters)
                 <input value={nextActionReason} onChange={(e) => setNextActionReason(e.target.value)} className="input mt-1" />
               </label>
             </>
           )}
 
-          {to === "scheduled" && (
+          {pending === "scheduled" && (
             <label className="block text-xs text-neutral-600">
-              Shoot date (required if not already set)
+              Shoot date
               <input type="date" value={currentShootDate} onChange={(e) => setCurrentShootDate(e.target.value)} className="input mt-1" />
             </label>
           )}
 
-          {to === "closed_won" && (
+          {pending === "closed_won" && (
             <div className="space-y-1.5">
+              <p className="text-xs text-neutral-600">Closing as won needs the client&apos;s feedback saved first.</p>
               <label className="flex items-center gap-2 text-xs text-neutral-700">
                 <input type="checkbox" checked={feedbackWaived} onChange={(e) => setFeedbackWaived(e.target.checked)} />
-                Waive the feedback requirement
+                Skip feedback for this one
               </label>
               {feedbackWaived && (
                 <input
-                  aria-label="Why feedback is being waived"
+                  aria-label="Why feedback is being skipped"
                   value={feedbackWaivedNote}
                   onChange={(e) => setFeedbackWaivedNote(e.target.value)}
-                  placeholder="Why is feedback being waived?"
+                  placeholder="Why is feedback being skipped?"
                   className="input"
                 />
               )}
             </div>
           )}
 
-          {error && (
-            <p role="alert" className="text-xs text-red-700">
-              {error}
-            </p>
-          )}
-
           <div className="flex items-center gap-2">
-            <button onClick={() => apply()} disabled={busy} className="btn-primary">
-              {busy ? "Applying…" : `Move to ${label(to)}`}
+            <button onClick={() => apply(pending)} disabled={busy} className="btn-primary">
+              {busy ? "Saving…" : "Change status"}
             </button>
-            <button onClick={() => setTo("")} className="link-quiet text-xs">
+            <button onClick={() => setPending(null)} disabled={busy} className="link-quiet text-sm">
               Cancel
             </button>
           </div>
         </div>
       )}
-      {!to && error && (
+
+      {error && (
         <p role="alert" className="text-xs text-red-700">
           {error}
         </p>

@@ -16,6 +16,7 @@ interface Draft {
   categories: string[];
   notes: string;
   contacts: Contact[];
+  contcaveUrl: string;
 }
 
 const emptyContact: Contact = { name: "", phone: "", isPrimary: false };
@@ -28,6 +29,7 @@ export function StudioDetails({
   categories,
   notes,
   contacts,
+  contcaveUrl,
 }: {
   studioId: string;
   name: string;
@@ -36,6 +38,7 @@ export function StudioDetails({
   categories: string[];
   notes: string | null | undefined;
   contacts: Contact[];
+  contcaveUrl: string | null | undefined;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -51,6 +54,7 @@ export function StudioDetails({
       categories,
       notes: notes ?? "",
       contacts: contacts.length ? contacts : [{ ...emptyContact }],
+      contcaveUrl: contcaveUrl ?? "",
     });
   }
 
@@ -84,6 +88,7 @@ export function StudioDetails({
         locality: draft.locality.trim() || null,
         categories: draft.categories,
         notes: draft.notes.trim() || null,
+        contcaveUrl: draft.contcaveUrl.trim() || null,
         // The first contact is the primary one — no separate "primary" control to manage.
         contacts: filled.map((c, i) => ({ ...c, name: c.name.trim(), phone: c.phone.trim(), isPrimary: i === 0 })),
       });
@@ -113,6 +118,18 @@ export function StudioDetails({
           <div>
             <dt className="text-xs text-neutral-500">Categories</dt>
             <dd className="capitalize text-neutral-800">{categories.join(", ") || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-neutral-500">ContCave listing</dt>
+            <dd className="text-neutral-800">
+              {contcaveUrl ? (
+                <a href={contcaveUrl} target="_blank" rel="noopener noreferrer" className="link-quiet text-neutral-900">
+                  View listing ↗
+                </a>
+              ) : (
+                <span className="text-neutral-500">Not listed yet</span>
+              )}
+            </dd>
           </div>
           {notes && (
             <div className="sm:col-span-2">
@@ -163,6 +180,15 @@ export function StudioDetails({
           <input value={draft.locality} onChange={(e) => patch({ locality: e.target.value })} className="input mt-1" />
         </label>
       </div>
+      <label className="block text-xs text-neutral-600">
+        ContCave listing URL (optional — once the studio is live on contcave.com)
+        <input
+          value={draft.contcaveUrl}
+          onChange={(e) => patch({ contcaveUrl: e.target.value })}
+          placeholder="https://contcave.com/studios/..."
+          className="input mt-1"
+        />
+      </label>
       <fieldset>
         <legend className="text-xs text-neutral-600">Categories</legend>
         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1.5">

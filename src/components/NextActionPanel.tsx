@@ -65,14 +65,16 @@ export function NextActionPanel({
       <div className="mb-2 flex items-center justify-between">
         <h3 className="card-title">Next action</h3>
         <button onClick={() => setEditing((v) => !v)} className="link-quiet py-1 text-xs">
-          {editing ? "Cancel" : "Edit"}
+          {editing ? "Cancel" : nextActionDate ? "Edit" : "Add"}
         </button>
       </div>
       {!editing ? (
         <div className="text-sm">
-          <p className="font-medium text-neutral-800">
-            {nextActionDate ? format(new Date(nextActionDate), "d MMM yyyy") : "No date set"}
-          </p>
+          {nextActionDate ? (
+            <p className="font-medium text-neutral-800">{format(new Date(nextActionDate), "d MMM yyyy")}</p>
+          ) : (
+            <p className="text-neutral-600">Nothing scheduled. Add the next step and it will show up on Today.</p>
+          )}
           {nextActionDate &&
             (nextActionReason ? (
               <p className="text-neutral-600">{nextActionReason}</p>

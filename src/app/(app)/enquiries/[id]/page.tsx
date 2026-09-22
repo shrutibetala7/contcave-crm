@@ -17,6 +17,7 @@ import { ShortlistTable } from "@/components/enquiries/ShortlistTable";
 import { DelayLog } from "@/components/enquiries/DelayLog";
 import { BookingPanel } from "@/components/enquiries/BookingPanel";
 import { FeedbackPanel } from "@/components/enquiries/FeedbackPanel";
+import { DeleteEnquiryButton } from "@/components/enquiries/DeleteEnquiryButton";
 
 export default async function EnquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
@@ -91,7 +92,11 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
           <ActivityTimeline entityType="enquiry" entityId={enquiry.id} activities={toClientSafe(activities)} />
         </div>
         <div className="order-first space-y-4 lg:order-none">
-          <StatusControl enquiryId={enquiry.id} currentStatus={enquiry.status} />
+          <StatusControl
+            enquiryId={enquiry.id}
+            currentStatus={enquiry.status}
+            shootDate={enquiry.schedule.currentShootDate ? new Date(enquiry.schedule.currentShootDate).toISOString() : null}
+          />
           <NextActionPanel
             entityUrl={`/api/enquiries/${enquiry.id}`}
             ownerId={enquiry.ownerId ?? null}
@@ -111,6 +116,10 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             </div>
           )}
         </div>
+      </div>
+
+      <div className="pt-2">
+        <DeleteEnquiryButton enquiryId={enquiry.id} code={enquiry.code} />
       </div>
     </div>
   );

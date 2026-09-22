@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
-import { enquiriesCol } from "@/lib/db/collections";
+import { enquiriesCol, activitiesCol } from "@/lib/db/collections";
 import { serialize } from "@/lib/db/serialize";
 import { toObjectId } from "@/lib/db/objectId";
 import { handleRoute, parseJson } from "@/lib/api/respond";
@@ -55,5 +55,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     );
     if (!result) throw new NotFoundError("Enquiry");
     return NextResponse.json({ data: serialize(result) });
+  });
+}
+
+export async function DELETE(_request: NextRequest, { params }: Params) {
+  return handleRoute(async () => {
+    const session = await requireSession();
+    const { id } = await params;
+    const enquiries = await enquiriesCol();
+    const result = await enquiries.deleteOne({ _id: toObjectId(id), tenantId: session.tenantId });
+    if (result.deletedCount === 0) throw new NotFoundError("Enquiry");
+    // Nothing should still point at a deleted enquiry — its timeline goes with it.
+    await (await activitiesCol()).deleteMany({ tenantId: session.tenantId, entityType: "enquiry", entityId: id });
+    return NextResponse.json({ data: { id } });
   });
 }

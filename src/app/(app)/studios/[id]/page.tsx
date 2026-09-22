@@ -53,6 +53,7 @@ export default async function StudioDetailPage({ params }: { params: Promise<{ i
             categories={studio.categories}
             notes={studio.notes}
             contacts={studio.contacts}
+            contcaveUrl={studio.contcaveUrl}
           />
           <ActivityTimeline entityType="studio" entityId={studio.id} activities={toClientSafe(activities)} />
         </div>

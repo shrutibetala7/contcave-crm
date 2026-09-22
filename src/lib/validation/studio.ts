@@ -66,6 +66,9 @@ const studioBaseSchema = z.object({
     gst: false,
   }),
   platformStudioId: z.string().nullable().optional(),
+  // The studio's live listing on contcave.com, if one exists yet — optional,
+  // since not every studio in the pipeline is listed on the platform.
+  contcaveUrl: z.string().nullable().optional(),
   ownerId: optionalObjectIdString,
   tags: z.array(z.string()).default([]),
   notes: z.string().nullable().optional(),

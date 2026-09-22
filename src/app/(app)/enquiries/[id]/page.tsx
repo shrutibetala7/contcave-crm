@@ -51,10 +51,6 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
 
   // Only show the cards that apply at this point in the enquiry's life.
   const showDelayLog = ["scheduled", "delayed"].includes(enquiry.status) || enquiry.schedule.delayEvents.length > 0;
-  const showBooking =
-    ["negotiating", "confirmed", "scheduled", "delayed", "completed", "feedback_pending", "closed_won"].includes(enquiry.status) ||
-    enquiry.booking.offPlatform ||
-    Boolean(enquiry.booking.platformBookingId);
   const studioOptions = studioDocs.map((s) => ({ id: s._id.toHexString(), name: s.name }));
 
   return (
@@ -104,7 +100,9 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             nextActionReason={enquiry.nextActionReason ?? null}
             users={users}
           />
-          {showBooking && <BookingPanel enquiryId={enquiry.id} booking={enquiry.booking} />}
+          {/* Always shown — Confirmed can be reached in one step from any early
+              status, and its guard needs this card's data to be fillable before then. */}
+          <BookingPanel enquiryId={enquiry.id} booking={enquiry.booking} />
           {enquiry.outcome.result && (
             <div className="card p-4 text-sm">
               <h3 className="card-title mb-1">Outcome</h3>

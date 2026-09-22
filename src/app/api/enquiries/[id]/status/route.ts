@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
-import { enquiriesCol } from "@/lib/db/collections";
+import { enquiriesCol, contactsCol } from "@/lib/db/collections";
 import { serialize } from "@/lib/db/serialize";
 import { toObjectId } from "@/lib/db/objectId";
 import { handleRoute, parseJson } from "@/lib/api/respond";
@@ -45,7 +45,15 @@ export async function POST(request: NextRequest, { params }: Params) {
       createdBy: session.sub,
     });
 
-    if ((input.to === "closed_won" || input.to === "lost") && result.brandId) {
+    // Once confirmed, the lead becomes a customer.
+    if (input.to === "confirmed" && result.contactId) {
+      await (await contactsCol()).updateOne(
+        { _id: toObjectId(result.contactId), tenantId: session.tenantId },
+        { $set: { isCustomer: true, updatedAt: new Date() } }
+      );
+    }
+
+    if ((input.to === "confirmed" || input.to === "lost" || input.to === "cancelled") && result.brandId) {
       await recomputeBrandRollups(session.tenantId, result.brandId);
     }
 

@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       tenantId: session.tenantId,
       brandId: input.brandId ?? null,
       name: input.name,
+      isCustomer: false,
       phone: normalizedPhone,
       whatsappNumber: normalizedWhatsapp ?? normalizedPhone,
       email: input.email ?? null,

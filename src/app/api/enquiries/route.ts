@@ -99,12 +99,21 @@ export async function POST(request: NextRequest) {
       code,
       brandId: input.brandId ?? null,
       contactId: input.contactId ?? null,
+      industry: input.industry ?? null,
       source: input.source,
       sourceDetail: input.sourceDetail ?? null,
       brief: input.brief,
-      status: ENQUIRY_STATUSES[0], // "new"
+      status: ENQUIRY_STATUSES[0], // "new_lead"
       shortlist: [],
-      outcome: { result: null, lossReason: null, lossNote: null, competitorName: null, closedAt: null },
+      outcome: {
+        result: null,
+        lossReason: null,
+        lossNote: null,
+        competitorName: null,
+        cancelReason: null,
+        cancelNote: null,
+        closedAt: null,
+      },
       booking: {
         platformBookingId: null,
         offPlatform: false,
@@ -115,6 +124,7 @@ export async function POST(request: NextRequest) {
       },
       schedule: { originalShootDate: null, currentShootDate: null, endDate: null, delayEvents: [] },
       feedback: {},
+      enquiryDate: input.enquiryDate,
       ownerId: input.ownerId ?? session.sub,
       nextActionDate: input.nextActionDate ?? null,
       nextActionReason: input.nextActionReason ?? null,

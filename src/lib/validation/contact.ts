@@ -23,6 +23,9 @@ export type ContactUpdateInput = z.infer<typeof contactUpdateSchema>;
 export const contactDocSchema = contactCreateSchema.extend({
   id: z.string(),
   tenantId: z.string(),
+  // Set once any of this contact's enquiries reaches "confirmed" — a lead
+  // becomes a customer (see stateMachine/enquiryStatus.ts). Never unset.
+  isCustomer: z.boolean().default(false),
   // Stored values are always normalized (the route guarantees this before insert).
   phone: e164Phone,
   whatsappNumber: e164Phone, // defaults to phone on write, never null once stored

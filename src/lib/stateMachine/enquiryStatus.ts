@@ -3,9 +3,13 @@ import { TransitionError } from "@/lib/stateMachine/errors";
 import type { Booking, Feedback, Schedule, ShortlistEntryDoc, StatusChangeInput } from "@/lib/validation/enquiry";
 
 /**
- * spec §4.1. This is the *only* place enquiry.status transitions are
- * decided — API routes call assertValidTransition() and apply the
- * returned `set` patch; they never branch on status themselves.
+ * The enquiry pipeline is seven statuses (see lib/enums.ts): New Lead, In
+ * Progress, Confirmed, On Hold, Cancelled, Lost, Dormant. Any non-terminal
+ * status can move to any other — there is no forced order — except the two
+ * dead ends (Cancelled, Lost) and Confirmed, which only exits sideways to
+ * On Hold or Cancelled (a booked shoot can still fall through). This module
+ * is the *only* place that decides — API routes call assertValidTransition()
+ * and apply the returned `set` patch; they never branch on status themselves.
  */
 
 export interface EnquiryStateInput {
@@ -20,57 +24,12 @@ export interface TransitionResult {
   set: Record<string, unknown>;
 }
 
-const MAIN_SEQUENCE: EnquiryStatus[] = [
-  "new",
-  "contacted",
-  "qualified",
-  "shortlist_sent",
-  "negotiating",
-  "confirmed",
-  "scheduled",
-  "completed",
-  "feedback_pending",
-  "closed_won",
-];
-
-const TERMINAL_STATUSES = new Set<EnquiryStatus>(["closed_won", "lost"]);
-
-// The early funnel, before anything is booked. Any of these can move to any
-// other (a client can arrive already qualified, or go back to negotiating).
-const EARLY = new Set<EnquiryStatus>(["new", "contacted", "qualified", "shortlist_sent", "negotiating"]);
-
-// §4.1 allows "lost" up to and including confirmed, and from delayed. Two
-// deliberate additions: "scheduled" (a client can cancel a booked shoot, and
-// forcing that through a fake delay would put a false entry in the delay log)
-// and "dormant" (a parked enquiry that will never revive should be closable).
-// Still not allowed once the shoot is "completed" — at that point it happened.
-const LOST_ALLOWED_FROM = new Set<EnquiryStatus>([
-  "new",
-  "contacted",
-  "qualified",
-  "shortlist_sent",
-  "negotiating",
-  "confirmed",
-  "scheduled",
-  "delayed",
-  "dormant",
-]);
+const TERMINAL_STATUSES = new Set<EnquiryStatus>(["cancelled", "lost"]);
 
 function isAllowedTransition(from: EnquiryStatus, to: EnquiryStatus): boolean {
-  if (to === "lost") return LOST_ALLOWED_FROM.has(from);
-  if (to === "dormant") return !TERMINAL_STATUSES.has(from) && from !== "dormant";
-  if (from === "dormant") return to === "contacted";
-  if (to === "delayed") return from === "scheduled";
-  if (from === "delayed") return to === "scheduled";
-
-  const fromIdx = MAIN_SEQUENCE.indexOf(from);
-  const toIdx = MAIN_SEQUENCE.indexOf(to);
-  if (fromIdx === -1 || toIdx === -1) return false;
-  if (EARLY.has(from) && EARLY.has(to)) return true; // move freely while nothing is booked
-  if (toIdx < fromIdx) return true; // going back is always fine
-  // Forward: one step at a time — except straight to "confirmed" from the early funnel.
-  // Every step from Confirmed on needs real data (booking, date, feedback), checked below.
-  return toIdx === fromIdx + 1 || (EARLY.has(from) && to === "confirmed");
+  if (TERMINAL_STATUSES.has(from)) return false;
+  if (from === "confirmed") return to === "on_hold" || to === "cancelled";
+  return true; // every other non-terminal status can move to any other status
 }
 
 function runGuard(to: EnquiryStatus, enquiry: EnquiryStateInput, payload: StatusChangeInput): void {
@@ -85,27 +44,12 @@ function runGuard(to: EnquiryStatus, enquiry: EnquiryStateInput, payload: Status
       }
       break;
     }
-    case "scheduled": {
-      const shootDate = payload.currentShootDate ?? enquiry.schedule.currentShootDate;
-      if (!shootDate) {
-        throw new TransitionError("Add the shoot date first.");
+    case "cancelled": {
+      if (!payload.cancelReason) {
+        throw new TransitionError("Choose why this was cancelled.");
       }
-      break;
-    }
-    case "completed": {
-      const shootDate = enquiry.schedule.currentShootDate;
-      if (!shootDate || shootDate.getTime() > Date.now()) {
-        throw new TransitionError("The shoot date hasn't passed yet, so this can't be completed.");
-      }
-      break;
-    }
-    case "closed_won": {
-      const collectedAt = enquiry.feedback?.client?.collectedAt;
-      if (!collectedAt && !payload.feedbackWaived) {
-        throw new TransitionError("Save the client's feedback first, or skip it with a reason.");
-      }
-      if (payload.feedbackWaived && !payload.feedbackWaivedNote) {
-        throw new TransitionError("Say why the feedback is being skipped.");
+      if (payload.cancelReason === "other" && !(payload.cancelNote?.trim().length ?? 0)) {
+        throw new TransitionError("Say what the reason was.");
       }
       break;
     }
@@ -122,12 +66,6 @@ function runGuard(to: EnquiryStatus, enquiry: EnquiryStateInput, payload: Status
       // Change Brief v1.1 §B: a date with no reason is a date with no context.
       if ((payload.nextActionReason?.trim().length ?? 0) < 8) {
         throw new TransitionError("Say why it's parked (at least 8 characters).");
-      }
-      break;
-    }
-    case "delayed": {
-      if (!enquiry.schedule.delayEvents || enquiry.schedule.delayEvents.length === 0) {
-        throw new TransitionError("Log the delay in the Delay log — that marks the shoot as delayed.");
       }
       break;
     }
@@ -150,38 +88,39 @@ export function assertValidTransition(
   if (from === target) {
     throw new TransitionError("It already has that status.");
   }
-  if (TERMINAL_STATUSES.has(from)) {
-    throw new TransitionError("This enquiry is closed, so its status can no longer change.");
-  }
   if (!isAllowedTransition(from, target)) {
-    throw new TransitionError(`An enquiry can't go from ${from.replace(/_/g, " ")} to ${target.replace(/_/g, " ")} directly.`);
+    throw new TransitionError(
+      TERMINAL_STATUSES.has(from)
+        ? "This enquiry is closed, so its status can no longer change."
+        : `An enquiry can't go from ${from.replace(/_/g, " ")} to ${target.replace(/_/g, " ")} directly.`
+    );
   }
 
   runGuard(target, enquiry, payload);
 
   const set: Record<string, unknown> = { status: target };
 
-  if (target === "lost") {
+  if (target === "confirmed") {
+    // Confirmed replaces the old "closed_won" — the deal is done, the lead becomes a customer.
+    set["outcome.result"] = "won";
+    set["outcome.closedAt"] = new Date();
+  } else if (target === "cancelled") {
+    set["outcome.result"] = "cancelled";
+    set["outcome.cancelReason"] = payload.cancelReason;
+    set["outcome.cancelNote"] = payload.cancelNote ?? null;
+    set["outcome.closedAt"] = new Date();
+  } else if (target === "lost") {
     set["outcome.result"] = "lost";
     set["outcome.lossReason"] = payload.lossReason;
     set["outcome.lossNote"] = payload.lossNote ?? null;
     set["outcome.competitorName"] = payload.competitorName ?? null;
     set["outcome.closedAt"] = new Date();
-  } else if (target === "closed_won") {
-    set["outcome.result"] = "won";
-    set["outcome.closedAt"] = new Date();
-    if (payload.feedbackWaived) {
-      set["feedbackWaived"] = true;
-      set["feedbackWaivedNote"] = payload.feedbackWaivedNote ?? null;
-    }
   } else if (target === "dormant") {
     set["outcome.result"] = "dormant";
     set["nextActionDate"] = payload.nextActionDate;
     set["nextActionReason"] = payload.nextActionReason;
-  } else if (target === "contacted" && from === "dormant") {
-    set["outcome.result"] = null;
-  } else if (target === "scheduled" && payload.currentShootDate) {
-    set["schedule.currentShootDate"] = payload.currentShootDate;
+  } else if (from === "dormant") {
+    set["outcome.result"] = null; // revived
   }
 
   return { set };
@@ -189,7 +128,7 @@ export function assertValidTransition(
 
 /**
  * Statuses an enquiry may move to from `from`, per the transition graph
- * alone. Guards (a picked studio, a booking, a shoot date...) are still
+ * alone. Guards (a picked studio, a booking, a reason...) are still
  * enforced by assertValidTransition(); this only stops the UI offering moves
  * that can never succeed. Client-safe: no server-only imports.
  */

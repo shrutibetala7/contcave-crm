@@ -3,49 +3,35 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/apiClient";
-import { ENQUIRY_STATUSES, LOSS_REASONS, type EnquiryStatus } from "@/lib/enums";
+import { CANCEL_REASONS, CANCEL_REASON_LABELS, ENQUIRY_STATUSES, ENQUIRY_STATUS_LABELS, LOSS_REASONS, type EnquiryStatus } from "@/lib/enums";
 import { allowedNextStatuses } from "@/lib/stateMachine/enquiryStatus";
 
 const label = (s: string) => s.replace(/_/g, " ");
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const statusLabel = (s: string) => cap(label(s));
+const lossLabel = (s: string) => cap(label(s));
 
 /**
- * The status is one dropdown. Picking a status applies it straight away —
- * unless that move needs a piece of information (why it was lost, when to
- * revisit a parked enquiry, the shoot date, why feedback is skipped), in
- * which case a small form opens first. Only statuses the enquiry can actually
- * move to are listed; the rest is enforced on the server with plain-language errors.
+ * The status is one dropdown, listing only the statuses this enquiry can
+ * actually reach. Picking one applies it straight away — unless it needs a
+ * reason (Cancelled, Lost, Dormant), in which case a small form opens first.
  */
-export function StatusControl({
-  enquiryId,
-  currentStatus,
-  shootDate,
-}: {
-  enquiryId: string;
-  currentStatus: EnquiryStatus;
-  /** ISO date of the current shoot date, if one is already set. */
-  shootDate: string | null;
-}) {
+export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string; currentStatus: EnquiryStatus }) {
   const router = useRouter();
   const [pending, setPending] = useState<EnquiryStatus | null>(null);
   const [lossReason, setLossReason] = useState("");
   const [lossNote, setLossNote] = useState("");
   const [competitorName, setCompetitorName] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelNote, setCancelNote] = useState("");
   const [nextActionDate, setNextActionDate] = useState("");
   const [nextActionReason, setNextActionReason] = useState("");
-  const [currentShootDate, setCurrentShootDate] = useState("");
-  const [feedbackWaived, setFeedbackWaived] = useState(false);
-  const [feedbackWaivedNote, setFeedbackWaivedNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // "delayed" is set by logging a delay (which needs a reason and a follow-up), never from here.
-  const options: EnquiryStatus[] = allowedNextStatuses(currentStatus).filter((s) => s !== "delayed");
+  const options: EnquiryStatus[] = allowedNextStatuses(currentStatus);
   const list = ENQUIRY_STATUSES.filter((s) => s === currentStatus || options.includes(s));
 
-  const needsDetails = (to: EnquiryStatus) =>
-    to === "lost" || to === "dormant" || to === "closed_won" || (to === "scheduled" && !shootDate);
+  const needsDetails = (to: EnquiryStatus) => to === "lost" || to === "cancelled" || to === "dormant";
 
   async function apply(to: EnquiryStatus) {
     setBusy(true);
@@ -56,11 +42,10 @@ export function StatusControl({
         lossReason: lossReason || null,
         lossNote: lossNote || null,
         competitorName: competitorName || null,
+        cancelReason: cancelReason || null,
+        cancelNote: cancelNote || null,
         nextActionDate: nextActionDate ? new Date(nextActionDate).toISOString() : null,
         nextActionReason: nextActionReason || null,
-        currentShootDate: currentShootDate ? new Date(currentShootDate).toISOString() : null,
-        feedbackWaived,
-        feedbackWaivedNote: feedbackWaivedNote || null,
       });
       setPending(null);
       router.refresh();
@@ -98,19 +83,47 @@ export function StatusControl({
       >
         {list.map((s) => (
           <option key={s} value={s}>
-            {statusLabel(s)}
+            {ENQUIRY_STATUS_LABELS[s]}
           </option>
         ))}
       </select>
 
       {closed && <p className="text-xs text-neutral-500">This enquiry is closed, so its status can no longer change.</p>}
-      {currentStatus === "scheduled" && (
-        <p className="text-xs text-neutral-500">If the shoot slips, log it in the Delay log.</p>
+      {currentStatus === "confirmed" && (
+        <p className="text-xs text-neutral-500">Confirmed can still move to On Hold or Cancelled if the booking falls through.</p>
       )}
 
       {pending && (
         <div className="space-y-2 border-t border-neutral-100 pt-3">
-          <p className="text-sm font-medium text-neutral-900">Change to {label(pending)}</p>
+          <p className="text-sm font-medium text-neutral-900">Change to {ENQUIRY_STATUS_LABELS[pending]}</p>
+
+          {pending === "cancelled" && (
+            <>
+              <label className="block text-xs text-neutral-600">
+                Why was it cancelled?
+                <select value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} className="input mt-1">
+                  <option value="">Choose a reason…</option>
+                  {CANCEL_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {CANCEL_REASON_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {cancelReason === "other" && (
+                <label className="block text-xs text-neutral-600">
+                  What was the reason?
+                  <input value={cancelNote} onChange={(e) => setCancelNote(e.target.value)} className="input mt-1" autoFocus />
+                </label>
+              )}
+              {cancelReason && cancelReason !== "other" && (
+                <label className="block text-xs text-neutral-600">
+                  Note (optional)
+                  <input value={cancelNote} onChange={(e) => setCancelNote(e.target.value)} className="input mt-1" />
+                </label>
+              )}
+            </>
+          )}
 
           {pending === "lost" && (
             <>
@@ -120,7 +133,7 @@ export function StatusControl({
                   <option value="">Choose a reason…</option>
                   {LOSS_REASONS.map((r) => (
                     <option key={r} value={r}>
-                      {statusLabel(r)}
+                      {lossLabel(r)}
                     </option>
                   ))}
                 </select>
@@ -149,32 +162,6 @@ export function StatusControl({
                 <input value={nextActionReason} onChange={(e) => setNextActionReason(e.target.value)} className="input mt-1" />
               </label>
             </>
-          )}
-
-          {pending === "scheduled" && (
-            <label className="block text-xs text-neutral-600">
-              Shoot date
-              <input type="date" value={currentShootDate} onChange={(e) => setCurrentShootDate(e.target.value)} className="input mt-1" />
-            </label>
-          )}
-
-          {pending === "closed_won" && (
-            <div className="space-y-1.5">
-              <p className="text-xs text-neutral-600">Closing as won needs the client&apos;s feedback saved first.</p>
-              <label className="flex items-center gap-2 text-xs text-neutral-700">
-                <input type="checkbox" checked={feedbackWaived} onChange={(e) => setFeedbackWaived(e.target.checked)} />
-                Skip feedback for this one
-              </label>
-              {feedbackWaived && (
-                <input
-                  aria-label="Why feedback is being skipped"
-                  value={feedbackWaivedNote}
-                  onChange={(e) => setFeedbackWaivedNote(e.target.value)}
-                  placeholder="Why is feedback being skipped?"
-                  className="input"
-                />
-              )}
-            </div>
           )}
 
           <div className="flex items-center gap-2">

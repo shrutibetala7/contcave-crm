@@ -47,7 +47,95 @@ function formatShootDate(flexible: boolean, dates: (Date | string)[]): string {
   return `${format(sorted[0], "d MMM")} – ${format(sorted[sorted.length - 1], "d MMM yyyy")}`;
 }
 
-export function BriefPanel({ enquiryId, brief }: { enquiryId: string; brief: Brief }) {
+function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * When the enquiry actually came in — distinct from `createdAt` (when the
+ * CRM record was made), so backfilled history keeps its real date. Defaults
+ * to "today" via the checkbox; unchecking it reveals a date picker.
+ */
+function EnquiryDateRow({ enquiryId, enquiryDate }: { enquiryId: string; enquiryDate: string | Date | null }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [useToday, setUseToday] = useState(true);
+  const [date, setDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function startEdit() {
+    setError(null);
+    const current = enquiryDate ? new Date(enquiryDate) : new Date();
+    const iso = isoDay(current);
+    setUseToday(iso === isoDay(new Date()));
+    setDate(iso);
+    setEditing(true);
+  }
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const value = useToday ? new Date() : new Date(date);
+      await api.patch(`/api/enquiries/${enquiryId}`, { enquiryDate: value.toISOString() });
+      setEditing(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <dt className="flex items-center justify-between text-xs text-neutral-500">
+        Enquiry date
+        <button type="button" onClick={editing ? () => setEditing(false) : startEdit} className="link-quiet">
+          {editing ? "Cancel" : "Edit"}
+        </button>
+      </dt>
+      {editing ? (
+        <div className="mt-1 space-y-1.5">
+          <label className="flex items-center gap-2 text-sm text-neutral-700">
+            <input type="checkbox" checked={useToday} onChange={(e) => setUseToday(e.target.checked)} />
+            Today
+          </label>
+          {!useToday && (
+            <input
+              type="date"
+              aria-label="Enquiry date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="input w-auto py-1 text-xs"
+            />
+          )}
+          {error && (
+            <p role="alert" className="text-xs text-red-700">
+              {error}
+            </p>
+          )}
+          <button onClick={save} disabled={busy} className="btn-secondary btn-sm">
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      ) : (
+        <dd className="text-sm text-neutral-800">{enquiryDate ? format(new Date(enquiryDate), "d MMM yyyy") : "Not set"}</dd>
+      )}
+    </div>
+  );
+}
+
+export function BriefPanel({
+  enquiryId,
+  enquiryDate,
+  brief,
+}: {
+  enquiryId: string;
+  enquiryDate: string | Date | null;
+  brief: Brief;
+}) {
   const router = useRouter();
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [editingDates, setEditingDates] = useState(false);
@@ -114,6 +202,7 @@ export function BriefPanel({ enquiryId, brief }: { enquiryId: string; brief: Bri
         </p>
       </div>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <EnquiryDateRow enquiryId={enquiryId} enquiryDate={enquiryDate} />
         <Row
           label="Shoot type"
           value={brief.shootType}

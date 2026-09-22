@@ -3,11 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/apiClient";
-import { FEEDBACK_ISSUES, type EnquiryStatus } from "@/lib/enums";
+import { FEEDBACK_ISSUES } from "@/lib/enums";
 import type { Feedback } from "@/types/models";
-
-/** Statuses at which feedback is collected; earlier, the card is not shown at all. */
-const FEEDBACK_STATUSES = new Set<EnquiryStatus>(["completed", "feedback_pending", "closed_won"]);
 
 /**
  * 1–5 as one-click buttons. Starts unset on purpose: a pre-selected 5 would
@@ -181,21 +178,8 @@ function StudioFeedbackForm({ enquiryId, onSaved }: { enquiryId: string; onSaved
   );
 }
 
-export function FeedbackPanel({
-  enquiryId,
-  feedback,
-  status,
-}: {
-  enquiryId: string;
-  feedback: Feedback;
-  status: EnquiryStatus;
-}) {
+export function FeedbackPanel({ enquiryId, feedback }: { enquiryId: string; feedback: Feedback }) {
   const router = useRouter();
-  const collected = Boolean(feedback.client?.collectedAt || feedback.studio?.collectedAt);
-
-  // Feedback only exists once the shoot has happened (or if some was already logged) —
-  // before that the card is just noise.
-  if (!collected && !FEEDBACK_STATUSES.has(status)) return null;
 
   return (
     <div className="card grid grid-cols-1 gap-6 p-4 sm:grid-cols-2">

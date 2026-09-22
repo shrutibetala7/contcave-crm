@@ -4,7 +4,7 @@ import { toObjectId } from "@/lib/db/objectId";
 /**
  * brands.{totalEnquiries,totalWon,lifetimeValue} are denormalised rollups,
  * "recomputed on enquiry close" (spec §3.2) — i.e. whenever an enquiry for
- * that brand reaches closed_won or lost.
+ * that brand reaches confirmed (won), lost, or cancelled.
  */
 export async function recomputeBrandRollups(tenantId: string, brandId: string): Promise<void> {
   const enquiries = await enquiriesCol();

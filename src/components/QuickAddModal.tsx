@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/apiClient";
 import { Icon } from "@/components/Icon";
-import { ENQUIRY_SOURCES, SHOOT_TYPES } from "@/lib/enums";
+import { BRAND_CATEGORIES, BRAND_CATEGORY_LABELS, ENQUIRY_SOURCES, SHOOT_TYPES } from "@/lib/enums";
 import {
   PARSED_FIELD_ORDER,
   type ParsedField,
@@ -46,6 +46,11 @@ const FIELD_LABELS: Record<ParsedFieldKey, string> = {
   "brief.datesFlexible": "Dates flexible",
 };
 
+function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+const TODAY_ISO = () => isoDay(new Date());
+
 export function QuickAddModal({ open, onClose, userId }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<"paste" | "review">("paste");
@@ -54,6 +59,15 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
   const [fields, setFields] = useState<ParsedFields>(emptyFields);
   const [confirmedKeys, setConfirmedKeys] = useState<Set<ParsedFieldKey>>(new Set());
   const [source, setSource] = useState<(typeof ENQUIRY_SOURCES)[number]>("whatsapp");
+  const [industry, setIndustry] = useState("");
+  // Shoot date: flexible, or a tentative date / short range.
+  const [datesFlexible, setDatesFlexible] = useState(false);
+  const [shootFrom, setShootFrom] = useState("");
+  const [shootTo, setShootTo] = useState("");
+  // Enquiry date: distinct from createdAt — defaults to today, but backfilled
+  // history needs its real date.
+  const [enquiryDateToday, setEnquiryDateToday] = useState(true);
+  const [enquiryDate, setEnquiryDate] = useState(TODAY_ISO());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,12 +76,7 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        setStep("paste");
-        setPasteText("");
-        setRawText("");
-        setFields(emptyFields);
-        setConfirmedKeys(new Set());
-        setError(null);
+        reset();
         onClose();
       }
     }
@@ -83,6 +92,12 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
     setRawText("");
     setFields(emptyFields);
     setConfirmedKeys(new Set());
+    setIndustry("");
+    setDatesFlexible(false);
+    setShootFrom("");
+    setShootTo("");
+    setEnquiryDateToday(true);
+    setEnquiryDate(TODAY_ISO());
     setError(null);
   }
 
@@ -135,6 +150,7 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
   const blockingKeys = PARSED_FIELD_ORDER.filter(
     (key) => fields[key].evidence === "inferred" && !confirmedKeys.has(key)
   );
+  const brandName = (fields["brand.name"].value as string | null)?.trim() || "";
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
@@ -155,7 +171,6 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
         };
       }
 
-      const brandName = fields["brand.name"].value as string | null;
       let brandId: string | undefined;
       if (brandName) {
         const brandRes = await api.post<{ data: { id: string } }>("/api/brands", { name: brandName });
@@ -175,19 +190,25 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
 
       const requirementsValue = fields["brief.requirements"].value;
       const requirements = Array.isArray(requirementsValue) ? requirementsValue : [];
+      const preferredDates = datesFlexible
+        ? []
+        : [shootFrom, shootTo].filter(Boolean).map((d) => new Date(d).toISOString());
 
       const enquiryRes = await api.post<{ data: { id: string } }>("/api/enquiries", {
         source,
         brandId,
         contactId,
+        // Only meaningful when there's no named brand — see the Industry field below.
+        industry: brandName ? null : industry || null,
+        enquiryDate: new Date(enquiryDateToday ? TODAY_ISO() : enquiryDate).toISOString(),
         brief: {
           rawText,
           shootType: fields["brief.shootType"].value,
           deliverables: fields["brief.deliverables"].value,
           city: fields["brief.city"].value,
           preferredLocality: fields["brief.preferredLocality"].value,
-          preferredDates: [],
-          datesFlexible: Boolean(fields["brief.datesFlexible"].value),
+          preferredDates,
+          datesFlexible,
           durationHours: fields["brief.durationHours"].value,
           crewSize: fields["brief.crewSize"].value,
           budgetMin: fields["brief.budgetMin"].value,
@@ -251,13 +272,56 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
         {step === "review" && (
           <form onSubmit={handleSave} className="max-h-[75vh] space-y-4 overflow-y-auto p-5">
             <div>
-              <label className="block text-xs font-medium text-neutral-500">Raw text (kept verbatim)</label>
+              <label className="block text-xs font-medium text-neutral-500">
+                Customer query (verbatim if pasted — otherwise describe what they asked for; this is what
+                later trains the parser, so the more real language, the better)
+              </label>
               <textarea
-                readOnly
                 rows={3}
                 value={rawText}
-                className="mt-1 w-full rounded-md border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-500"
+                onChange={(e) => setRawText(e.target.value)}
+                placeholder="What did they actually ask for?"
+                className="mt-1 w-full rounded-md border border-neutral-300 p-2 text-sm focus:border-neutral-500 focus:outline-none"
               />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="block text-xs font-medium text-neutral-500">Enquiry date</span>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-sm text-neutral-700">
+                    <input
+                      type="checkbox"
+                      checked={enquiryDateToday}
+                      onChange={(e) => setEnquiryDateToday(e.target.checked)}
+                    />
+                    Today
+                  </label>
+                  {!enquiryDateToday && (
+                    <input
+                      type="date"
+                      aria-label="Enquiry date"
+                      value={enquiryDate}
+                      onChange={(e) => setEnquiryDate(e.target.value)}
+                      className="input w-auto py-1 text-xs"
+                    />
+                  )}
+                </div>
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium text-neutral-500">Source</span>
+                <select
+                  value={source}
+                  onChange={(e) => setSource(e.target.value as typeof source)}
+                  className="input mt-1"
+                >
+                  {ENQUIRY_SOURCES.map((s) => (
+                    <option key={s} value={s}>
+                      {s.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -295,23 +359,24 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
                 <input
                   value={(fields["brand.name"].value as string) ?? ""}
                   onChange={(e) => setValue("brand.name", e.target.value)}
+                  placeholder="Leave blank if there's no company name"
                   className="input"
                 />
               </EvidenceField>
-              <label className="block">
-                <span className="block text-xs font-medium text-neutral-500">Source</span>
-                <select
-                  value={source}
-                  onChange={(e) => setSource(e.target.value as typeof source)}
-                  className="input mt-1"
-                >
-                  {ENQUIRY_SOURCES.map((s) => (
-                    <option key={s} value={s}>
-                      {s.replace(/_/g, " ")}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {/* Brand name if we have one; otherwise at least capture what kind of business this is. */}
+              {!brandName && (
+                <label className="block">
+                  <span className="block text-xs font-medium text-neutral-500">Industry (no brand name given)</span>
+                  <select value={industry} onChange={(e) => setIndustry(e.target.value)} className="input mt-1">
+                    <option value="">—</option>
+                    {BRAND_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {BRAND_CATEGORY_LABELS[c]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <EvidenceField
                 fieldKey="brief.shootType"
                 field={fields["brief.shootType"]}
@@ -371,21 +436,34 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
               </EvidenceField>
             </div>
 
-            <EvidenceField
-              fieldKey="brief.datesFlexible"
-              field={fields["brief.datesFlexible"]}
-              confirmed={confirmedKeys.has("brief.datesFlexible")}
-              onConfirm={confirmField}
-            >
-              <label className="flex items-center gap-2 text-sm text-neutral-700">
-                <input
-                  type="checkbox"
-                  checked={Boolean(fields["brief.datesFlexible"].value)}
-                  onChange={(e) => setValue("brief.datesFlexible", e.target.checked || null)}
-                />
-                Yes, the dates are flexible
-              </label>
-            </EvidenceField>
+            <label className="block">
+              <span className="block text-xs font-medium text-neutral-500">Shoot date</span>
+              <div className="mt-1 space-y-1.5">
+                <label className="flex items-center gap-2 text-sm text-neutral-700">
+                  <input type="checkbox" checked={datesFlexible} onChange={(e) => setDatesFlexible(e.target.checked)} />
+                  Dates are flexible
+                </label>
+                {!datesFlexible && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+                    <input
+                      type="date"
+                      aria-label="Tentative shoot date"
+                      value={shootFrom}
+                      onChange={(e) => setShootFrom(e.target.value)}
+                      className="input w-auto py-1 text-xs"
+                    />
+                    <span>to (optional, for a range)</span>
+                    <input
+                      type="date"
+                      aria-label="End of shoot date range"
+                      value={shootTo}
+                      onChange={(e) => setShootTo(e.target.value)}
+                      className="input w-auto py-1 text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+            </label>
 
             <EvidenceField
               fieldKey="brief.deliverables"

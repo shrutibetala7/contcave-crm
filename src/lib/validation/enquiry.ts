@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  BRAND_CATEGORIES,
+  CANCEL_REASONS,
   DELAY_CAUSED_BY,
   ENQUIRY_SOURCES,
   ENQUIRY_STATUSES,
@@ -47,9 +49,17 @@ export const enquiryCreateSchema = z
   .object({
     brandId: optionalObjectIdString,
     contactId: optionalObjectIdString,
+    // The brand's (or, with no named brand, the enquiry's own) line of
+    // business — "Brand Name if available, else Industry".
+    industry: z.enum(BRAND_CATEGORIES).nullable().optional(),
     source: z.enum(ENQUIRY_SOURCES),
     sourceDetail: z.string().nullable().optional(),
     brief: briefSchema,
+    // When the enquiry actually came in — distinct from createdAt (when the
+    // CRM record was made), so backfilled history can carry its real date.
+    // Always sent by the UI (defaulting to today), so it's required here;
+    // lenient on read (enquiryDocSchema) for any record from before this existed.
+    enquiryDate: z.coerce.date(),
     ownerId: optionalObjectIdString,
     nextActionDate: z.coerce.date().nullable().optional(),
     // Change Brief v1.1 §B: a next action with no reason is a date with no
@@ -91,10 +101,14 @@ export type ShortlistEntryDoc = z.infer<typeof shortlistEntryDocSchema>;
 // ---- outcome / booking --------------------------------------------------------
 
 export const outcomeSchema = z.object({
-  result: z.enum(["won", "lost", "dormant"]).nullable().optional(),
+  result: z.enum(["won", "lost", "dormant", "cancelled"]).nullable().optional(),
   lossReason: z.enum(LOSS_REASONS).nullable().optional(),
   lossNote: z.string().nullable().optional(),
   competitorName: z.string().nullable().optional(),
+  // Set when result is "cancelled" — a different reason set than Lost's,
+  // since a cancellation is usually an operational reason, not a commercial one.
+  cancelReason: z.enum(CANCEL_REASONS).nullable().optional(),
+  cancelNote: z.string().nullable().optional(),
   closedAt: z.date().nullable().optional(),
 });
 export type Outcome = z.infer<typeof outcomeSchema>;
@@ -120,10 +134,12 @@ export const enquiryUpdateSchema = z
   .object({
     brandId: optionalObjectIdString,
     contactId: optionalObjectIdString,
+    industry: z.enum(BRAND_CATEGORIES).nullable().optional(),
     source: z.enum(ENQUIRY_SOURCES).optional(),
     sourceDetail: z.string().nullable().optional(),
     brief: patchOf(briefSchema).optional(),
     booking: patchOf(bookingSchema).optional(),
+    enquiryDate: z.coerce.date().optional(),
     ownerId: optionalObjectIdString,
     nextActionDate: z.coerce.date().nullable().optional(),
     nextActionReason: z.string().nullable().optional(),
@@ -250,11 +266,10 @@ export const statusChangeSchema = z.object({
   lossReason: z.enum(LOSS_REASONS).nullable().optional(),
   lossNote: z.string().nullable().optional(),
   competitorName: z.string().nullable().optional(),
+  cancelReason: z.enum(CANCEL_REASONS).nullable().optional(),
+  cancelNote: z.string().nullable().optional(),
   nextActionDate: z.coerce.date().nullable().optional(),
   nextActionReason: z.string().nullable().optional(),
-  currentShootDate: z.coerce.date().nullable().optional(),
-  feedbackWaived: z.boolean().nullable().optional(),
-  feedbackWaivedNote: z.string().nullable().optional(),
 });
 export type StatusChangeInput = z.infer<typeof statusChangeSchema>;
 
@@ -266,6 +281,7 @@ export const enquiryDocSchema = z.object({
   code: z.string(),
   brandId: optionalObjectIdString,
   contactId: optionalObjectIdString,
+  industry: z.enum(BRAND_CATEGORIES).nullable().optional(),
   source: z.enum(ENQUIRY_SOURCES),
   sourceDetail: z.string().nullable().optional(),
   brief: briefSchema,
@@ -277,6 +293,8 @@ export const enquiryDocSchema = z.object({
   feedback: feedbackSchema.default({}),
   feedbackWaived: z.boolean().optional(),
   feedbackWaivedNote: z.string().nullable().optional(),
+  // Lenient here (unlike enquiryCreateSchema) — old records predate this field.
+  enquiryDate: z.coerce.date().nullable().optional(),
   ownerId: optionalObjectIdString,
   nextActionDate: z.date().nullable().optional(),
   nextActionReason: z.string().nullable().optional(),

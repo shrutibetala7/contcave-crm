@@ -225,7 +225,7 @@ async function seedDemoData(db: import("mongodb").Db, userIds: Record<string, Ob
       budgetMax: 80000,
       requirements: ["cyclorama", "natural light"],
     },
-    status: "shortlist_sent",
+    status: "in_progress",
     shortlist: [
       {
         id: new ObjectId().toHexString(),
@@ -243,6 +243,7 @@ async function seedDemoData(db: import("mongodb").Db, userIds: Record<string, Ob
     schedule: { originalShootDate: null, currentShootDate: null, endDate: null, delayEvents: [] },
     feedback: {},
     ownerId,
+    enquiryDate: now,
     nextActionDate: tomorrow,
     nextActionReason: "Follow up on studio quote — check if they've confirmed the shoot date",
     lastContactedAt: now,

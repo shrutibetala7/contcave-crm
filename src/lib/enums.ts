@@ -4,22 +4,35 @@
  * import the same arrays so labels never drift from validation.
  */
 
+/**
+ * The enquiry pipeline, simplified to seven statuses. Any non-terminal
+ * status can move to any other (see stateMachine/enquiryStatus.ts) —
+ * there's no forced march through sub-stages any more. Confirmed carries
+ * the old "closed_won" meaning (the deal is done, the lead becomes a
+ * customer); Cancelled and Lost are both dead ends but for different
+ * reasons (an operational reason — the shoot itself fell through — vs. a
+ * commercial one — the deal was lost).
+ */
 export const ENQUIRY_STATUSES = [
-  "new",
-  "contacted",
-  "qualified",
-  "shortlist_sent",
-  "negotiating",
+  "new_lead",
+  "in_progress",
   "confirmed",
-  "scheduled",
-  "delayed",
-  "completed",
-  "feedback_pending",
-  "closed_won",
-  "dormant",
+  "on_hold",
+  "cancelled",
   "lost",
+  "dormant",
 ] as const;
 export type EnquiryStatus = (typeof ENQUIRY_STATUSES)[number];
+
+export const ENQUIRY_STATUS_LABELS: Record<EnquiryStatus, string> = {
+  new_lead: "New Lead",
+  in_progress: "In Progress",
+  confirmed: "Confirmed",
+  on_hold: "On Hold",
+  cancelled: "Cancelled",
+  lost: "Lost",
+  dormant: "Dormant",
+};
 
 export const ENQUIRY_SOURCES = [
   "instagram_dm",
@@ -71,6 +84,24 @@ export const LOSS_REASONS = [
 ] as const;
 export type LossReason = (typeof LOSS_REASONS)[number];
 
+/** Why an enquiry was marked Cancelled — distinct from Lost's commercial reasons. */
+export const CANCEL_REASONS = [
+  "shoot_rescheduled",
+  "pricing_issue",
+  "availability_issue",
+  "shoot_cancelled",
+  "other",
+] as const;
+export type CancelReason = (typeof CANCEL_REASONS)[number];
+
+export const CANCEL_REASON_LABELS: Record<CancelReason, string> = {
+  shoot_rescheduled: "Shoot Rescheduled",
+  pricing_issue: "Pricing Issue",
+  availability_issue: "Availability Issue",
+  shoot_cancelled: "Shoot Cancelled",
+  other: "Others",
+};
+
 export const DELAY_CAUSED_BY = ["client", "studio", "contcave", "external"] as const;
 export type DelayCausedBy = (typeof DELAY_CAUSED_BY)[number];
 
@@ -119,15 +150,28 @@ export type CommercialModel = (typeof COMMERCIAL_MODELS)[number];
 export const AGREEMENT_STATUSES = ["none", "sent", "signed", "expired"] as const;
 export type AgreementStatus = (typeof AGREEMENT_STATUSES)[number];
 
+/**
+ * What kind of business a brand (or an enquiry with no named brand) is.
+ * Used two ways: as `brands.category` when the company has a name, or as
+ * `enquiries.industry` when it doesn't — same taxonomy either way, so a
+ * "Marketing Agency" is the same value whether or not we know its name yet.
+ */
 export const BRAND_CATEGORIES = [
-  "d2c_fashion",
-  "beauty",
-  "food",
-  "agency",
+  "marketing_agency",
   "creator",
-  "other",
+  "fashion_brand",
+  "production_house",
+  "other_brand",
 ] as const;
 export type BrandCategory = (typeof BRAND_CATEGORIES)[number];
+
+export const BRAND_CATEGORY_LABELS: Record<BrandCategory, string> = {
+  marketing_agency: "Marketing Agency",
+  creator: "Creator",
+  fashion_brand: "Fashion Brand",
+  production_house: "Production House",
+  other_brand: "Other Brand",
+};
 
 export const CONTACT_ROLES = [
   "founder",

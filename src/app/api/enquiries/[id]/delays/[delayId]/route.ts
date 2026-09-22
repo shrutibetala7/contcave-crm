@@ -6,11 +6,10 @@ import { toObjectId } from "@/lib/db/objectId";
 import { handleRoute, parseJson } from "@/lib/api/respond";
 import { NotFoundError } from "@/lib/api/errors";
 import { delayUpdateSchema } from "@/lib/validation/enquiry";
-import { assertValidTransition } from "@/lib/stateMachine/enquiryStatus";
-import { writeStatusChangeActivity } from "@/lib/activity";
 
 type Params = { params: Promise<{ id: string; delayId: string }> };
 
+/** Resolving a delay (or updating its follow-up) never changes the enquiry's status — see delays/route.ts. */
 export async function PATCH(request: NextRequest, { params }: Params) {
   return handleRoute(async () => {
     const session = await requireSession();
@@ -36,38 +35,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       set["schedule.currentShootDate"] = input.newDate;
     }
 
-    // Leaving "delayed" requires either a newDate (-> scheduled) — the
-    // cancellation branch (-> lost) goes through the status endpoint
-    // instead (spec §4.1).
-    let statusChangedTo: string | null = null;
-    if (enquiry.status === "delayed" && input.newDate) {
-      const { set: statusSet } = assertValidTransition(
-        enquiry,
-        "scheduled",
-        { to: "scheduled", note: input.note ?? null, currentShootDate: input.newDate }
-      );
-      Object.assign(set, statusSet);
-      statusChangedTo = "scheduled";
-    }
-
     const result = await enquiries.findOneAndUpdate(
       { _id, tenantId: session.tenantId },
       { $set: set },
       { arrayFilters: [{ "target.id": delayId }], returnDocument: "after" }
     );
     if (!result) throw new NotFoundError("Enquiry");
-
-    if (statusChangedTo) {
-      await writeStatusChangeActivity({
-        tenantId: session.tenantId,
-        entityType: "enquiry",
-        entityId: id,
-        from: enquiry.status,
-        to: statusChangedTo,
-        note: input.note ?? "Rescheduled",
-        createdBy: session.sub,
-      });
-    }
 
     return NextResponse.json({ data: serialize(result) });
   });

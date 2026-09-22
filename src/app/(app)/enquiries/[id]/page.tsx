@@ -7,6 +7,7 @@ import { serialize, serializeAll } from "@/lib/db/serialize";
 import { toClientSafe } from "@/lib/serializeForClient";
 import { listUsers } from "@/lib/users";
 import { Icon } from "@/components/Icon";
+import { BRAND_CATEGORY_LABELS } from "@/lib/enums";
 import { StatusBadge } from "@/components/StatusBadge";
 import { WhatsAppLink } from "@/components/WhatsAppLink";
 import { NextActionPanel } from "@/components/NextActionPanel";
@@ -48,9 +49,6 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   ]);
 
   const activities = serializeAll(activityDocs);
-
-  // Only show the cards that apply at this point in the enquiry's life.
-  const showDelayLog = ["scheduled", "delayed"].includes(enquiry.status) || enquiry.schedule.delayEvents.length > 0;
   const studioOptions = studioDocs.map((s) => ({ id: s._id.toHexString(), name: s.name }));
 
   return (
@@ -62,6 +60,11 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="text-xl font-semibold tracking-tight text-neutral-900">{brand?.name ?? contact?.name ?? enquiry.code}</h1>
           <StatusBadge status={enquiry.status} />
+          {contact?.isCustomer && (
+            <span className="rounded-full border border-green-300 px-2 py-0.5 text-xs font-medium text-green-800">
+              Customer
+            </span>
+          )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-neutral-500">
           <span className="tabular-nums">{enquiry.code}</span>
@@ -71,28 +74,34 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               <span>{contact.name}</span>
             </>
           )}
+          {!brand && enquiry.industry && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="capitalize">{BRAND_CATEGORY_LABELS[enquiry.industry]}</span>
+            </>
+          )}
           {contact && <WhatsAppLink phone={contact.whatsappNumber} />}
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <BriefPanel enquiryId={enquiry.id} brief={toClientSafe(enquiry.brief)} />
+          <BriefPanel
+            enquiryId={enquiry.id}
+            enquiryDate={enquiry.enquiryDate ? new Date(enquiry.enquiryDate).toISOString() : null}
+            brief={toClientSafe(enquiry.brief)}
+          />
           <ShortlistTable
             enquiryId={enquiry.id}
             shortlist={toClientSafe(enquiry.shortlist)}
             studioOptions={studioOptions}
           />
-          {showDelayLog && <DelayLog enquiryId={enquiry.id} delayEvents={toClientSafe(enquiry.schedule.delayEvents)} />}
-          <FeedbackPanel enquiryId={enquiry.id} feedback={toClientSafe(enquiry.feedback)} status={enquiry.status} />
+          <DelayLog enquiryId={enquiry.id} delayEvents={toClientSafe(enquiry.schedule.delayEvents)} />
+          <FeedbackPanel enquiryId={enquiry.id} feedback={toClientSafe(enquiry.feedback)} />
           <ActivityTimeline entityType="enquiry" entityId={enquiry.id} activities={toClientSafe(activities)} />
         </div>
         <div className="order-first space-y-4 lg:order-none">
-          <StatusControl
-            enquiryId={enquiry.id}
-            currentStatus={enquiry.status}
-            shootDate={enquiry.schedule.currentShootDate ? new Date(enquiry.schedule.currentShootDate).toISOString() : null}
-          />
+          <StatusControl enquiryId={enquiry.id} currentStatus={enquiry.status} />
           <NextActionPanel
             entityUrl={`/api/enquiries/${enquiry.id}`}
             ownerId={enquiry.ownerId ?? null}
@@ -111,6 +120,10 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                 <p className="text-xs text-neutral-500">Reason: {enquiry.outcome.lossReason.replace(/_/g, " ")}</p>
               )}
               {enquiry.outcome.lossNote && <p className="text-xs text-neutral-500">{enquiry.outcome.lossNote}</p>}
+              {enquiry.outcome.cancelReason && (
+                <p className="text-xs text-neutral-500">Reason: {enquiry.outcome.cancelReason.replace(/_/g, " ")}</p>
+              )}
+              {enquiry.outcome.cancelNote && <p className="text-xs text-neutral-500">{enquiry.outcome.cancelNote}</p>}
             </div>
           )}
         </div>

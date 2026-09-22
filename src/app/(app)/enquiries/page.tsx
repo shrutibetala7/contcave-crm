@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
 import { ObjectId } from "mongodb";
 import { requireSession } from "@/lib/session";
-import { enquiriesCol, contactsCol, brandsCol } from "@/lib/db/collections";
+import { enquiriesCol, contactsCol, brandsCol, type EnquiryMongo } from "@/lib/db/collections";
 import { serializeAll } from "@/lib/db/serialize";
 import { listUsers } from "@/lib/users";
 import { EnquiriesFilters } from "@/components/enquiries/EnquiriesFilters";
 import { EnquiryTable } from "@/components/enquiries/EnquiryTable";
 import { parseSortParam } from "@/lib/listQuery";
+import { buildEnquirySortPipeline } from "@/lib/enquirySort";
 import type { EnquiryStatus, EnquirySource } from "@/lib/enums";
 
 export const metadata: Metadata = { title: "Enquiries" };
 
 const SORTABLE_FIELDS = ["nextActionDate", "createdAt", "code"] as const;
+const LIMIT = 100;
 
 export default async function EnquiriesPage({
   searchParams,
@@ -36,10 +38,21 @@ export default async function EnquiriesPage({
   }
   const hasFilters = Boolean(sp.status || sp.owner || sp.city || sp.source || sp.q);
 
-  const sort = parseSortParam(sp.sort, SORTABLE_FIELDS, { nextActionDate: 1, createdAt: -1 });
-
   const enquiries = await enquiriesCol();
-  const docs = await enquiries.find(filter).sort(sort).limit(100).toArray();
+
+  // Default (and explicit "date"/"-date"): shoot date if one is set, else
+  // enquiry date — soonest first. Any other value falls back to a plain field sort.
+  const sortParam = sp.sort ?? "date";
+  let docs: EnquiryMongo[];
+  if (sortParam === "date" || sortParam === "-date") {
+    const direction = sortParam.startsWith("-") ? -1 : 1;
+    docs = await enquiries
+      .aggregate<EnquiryMongo>(buildEnquirySortPipeline(filter, direction, LIMIT))
+      .toArray();
+  } else {
+    const sort = parseSortParam(sp.sort, SORTABLE_FIELDS, { nextActionDate: 1, createdAt: -1 });
+    docs = await enquiries.find(filter).sort(sort).limit(LIMIT).toArray();
+  }
   const list = serializeAll(docs);
 
   const contactIds = Array.from(new Set(docs.map((d) => d.contactId).filter((v): v is string => Boolean(v))));

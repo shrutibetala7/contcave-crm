@@ -2,6 +2,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 import { WhatsAppLink } from "@/components/WhatsAppLink";
+import { BRAND_CATEGORY_LABELS } from "@/lib/enums";
 import type { EnquiryDoc } from "@/types/models";
 import type { ContactMongo } from "@/lib/db/collections";
 
@@ -59,11 +60,13 @@ export function EnquiryTable({
     const brand = e.brandId ? brandById.get(e.brandId) : undefined;
     // Customer first, company second — the code is just an identifier, kept tiny.
     const name = contact?.name ?? brand ?? e.code;
+    // No named brand? Fall back to the industry captured on the enquiry itself.
+    const company = contact ? brand ?? (e.industry ? BRAND_CATEGORY_LABELS[e.industry] : undefined) : undefined;
     return {
       e,
       contact,
       name,
-      company: contact ? brand : undefined,
+      company,
       showCode: name !== e.code,
       brief: [e.brief.shootType, e.brief.city].filter(Boolean).join(" · "),
       owner: e.ownerId ? userById.get(e.ownerId) : undefined,

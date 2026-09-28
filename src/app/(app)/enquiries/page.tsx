@@ -40,15 +40,13 @@ export default async function EnquiriesPage({
 
   const enquiries = await enquiriesCol();
 
-  // Default (and explicit "date"/"-date"): shoot date if one is set, else
-  // enquiry date — soonest first. Any other value falls back to a plain field sort.
+  // Default ("date"): shoot date first (soonest on top), then enquiries with
+  // no shoot date yet (newest enquiry on top) — see enquirySort.ts. Any other
+  // explicit value falls back to a plain field sort.
   const sortParam = sp.sort ?? "date";
   let docs: EnquiryMongo[];
-  if (sortParam === "date" || sortParam === "-date") {
-    const direction = sortParam.startsWith("-") ? -1 : 1;
-    docs = await enquiries
-      .aggregate<EnquiryMongo>(buildEnquirySortPipeline(filter, direction, LIMIT))
-      .toArray();
+  if (sortParam === "date") {
+    docs = await enquiries.aggregate<EnquiryMongo>(buildEnquirySortPipeline(filter, LIMIT)).toArray();
   } else {
     const sort = parseSortParam(sp.sort, SORTABLE_FIELDS, { nextActionDate: 1, createdAt: -1 });
     docs = await enquiries.find(filter).sort(sort).limit(LIMIT).toArray();

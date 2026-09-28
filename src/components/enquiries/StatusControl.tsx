@@ -90,7 +90,10 @@ export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string;
 
       {closed && <p className="text-xs text-neutral-500">This enquiry is closed, so its status can no longer change.</p>}
       {currentStatus === "confirmed" && (
-        <p className="text-xs text-neutral-500">Confirmed can still move to On Hold or Cancelled if the booking falls through.</p>
+        <p className="text-xs text-neutral-500">
+          Moves to Completed by itself once the shoot date has passed. Until then it can still go On Hold or Cancelled if
+          the booking falls through.
+        </p>
       )}
 
       {pending && (

@@ -3,6 +3,7 @@ const COLORS: Record<string, string> = {
   new_lead: "bg-neutral-100 text-neutral-700",
   in_progress: "bg-blue-50 text-blue-700",
   confirmed: "bg-green-100 text-green-800",
+  completed: "bg-teal-100 text-teal-800",
   on_hold: "bg-amber-50 text-amber-700",
   cancelled: "bg-orange-100 text-orange-800",
   lost: "bg-red-50 text-red-700",

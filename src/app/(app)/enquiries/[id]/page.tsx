@@ -8,6 +8,7 @@ import { toClientSafe } from "@/lib/serializeForClient";
 import { listUsers } from "@/lib/users";
 import { Icon } from "@/components/Icon";
 import { BRAND_CATEGORY_LABELS } from "@/lib/enums";
+import { completeFinishedShoots } from "@/lib/completeFinishedShoots";
 import { StatusBadge } from "@/components/StatusBadge";
 import { WhatsAppLink } from "@/components/WhatsAppLink";
 import { NextActionPanel } from "@/components/NextActionPanel";
@@ -25,6 +26,9 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
 
   if (!ObjectId.isValid(id)) notFound();
+
+  // Opened straight from a link after the shoot? Show it as Completed, not Confirmed.
+  await completeFinishedShoots(session.tenantId);
 
   const enquiries = await enquiriesCol();
   const doc = await enquiries.findOne({ _id: new ObjectId(id), tenantId: session.tenantId });

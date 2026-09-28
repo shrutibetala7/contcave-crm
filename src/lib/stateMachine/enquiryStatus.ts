@@ -3,13 +3,16 @@ import { TransitionError } from "@/lib/stateMachine/errors";
 import type { Booking, Feedback, Schedule, ShortlistEntryDoc, StatusChangeInput } from "@/lib/validation/enquiry";
 
 /**
- * The enquiry pipeline is seven statuses (see lib/enums.ts): New Lead, In
- * Progress, Confirmed, On Hold, Cancelled, Lost, Dormant. Any non-terminal
- * status can move to any other — there is no forced order — except the two
- * dead ends (Cancelled, Lost) and Confirmed, which only exits sideways to
- * On Hold or Cancelled (a booked shoot can still fall through). This module
- * is the *only* place that decides — API routes call assertValidTransition()
- * and apply the returned `set` patch; they never branch on status themselves.
+ * The enquiry pipeline is eight statuses (see lib/enums.ts): New Lead, In
+ * Progress, Confirmed, Completed, On Hold, Cancelled, Lost, Dormant. Any
+ * non-terminal status can move to any other — there is no forced order —
+ * except the three dead ends (Completed, Cancelled, Lost) and Confirmed,
+ * which only exits to Completed (the shoot happened) or sideways to On Hold
+ * or Cancelled (a booked shoot can still fall through). Completed is only
+ * reachable from Confirmed, so a completed shoot always had a booking. This
+ * module is the *only* place that decides — API routes call
+ * assertValidTransition() and apply the returned `set` patch; they never
+ * branch on status themselves.
  */
 
 export interface EnquiryStateInput {
@@ -24,10 +27,11 @@ export interface TransitionResult {
   set: Record<string, unknown>;
 }
 
-const TERMINAL_STATUSES = new Set<EnquiryStatus>(["cancelled", "lost"]);
+const TERMINAL_STATUSES = new Set<EnquiryStatus>(["completed", "cancelled", "lost"]);
 
 function isAllowedTransition(from: EnquiryStatus, to: EnquiryStatus): boolean {
   if (TERMINAL_STATUSES.has(from)) return false;
+  if (to === "completed") return from === "confirmed";
   if (from === "confirmed") return to === "on_hold" || to === "cancelled";
   return true; // every other non-terminal status can move to any other status
 }
@@ -92,6 +96,8 @@ export function assertValidTransition(
     throw new TransitionError(
       TERMINAL_STATUSES.has(from)
         ? "This enquiry is closed, so its status can no longer change."
+        : target === "completed"
+        ? "Only a confirmed booking can be marked completed."
         : `An enquiry can't go from ${from.replace(/_/g, " ")} to ${target.replace(/_/g, " ")} directly.`
     );
   }

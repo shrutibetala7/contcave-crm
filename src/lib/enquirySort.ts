@@ -2,39 +2,65 @@ import type { Filter, Document } from "mongodb";
 import type { EnquiryMongo } from "@/lib/db/collections";
 
 /**
- * Two-tier sort, computed at query time rather than stored so it's never
- * out of sync with either field:
+ * "Active work on top, finished work at the bottom" — computed at query time
+ * rather than stored, so it's never out of sync with the fields it reads.
+ * Three tiers, top to bottom:
  *
- *   1. Enquiries with a shoot date come first, soonest shoot date on top —
- *      that's the operationally urgent group.
- *   2. Enquiries with no shoot date yet follow, newest enquiry first (falling
- *      back to `createdAt` on pre-migration records) — so a fresh, active
- *      lead surfaces above one that's been sitting untouched, instead of the
- *      oldest stale lead floating to the top.
+ *   2. Upcoming (or under way): has a shoot date that hasn't fully passed.
+ *      Soonest shoot on top.
+ *   1. No shoot date yet. Newest enquiry on top (enquiry date, falling back
+ *      to `createdAt` on pre-migration records), so a fresh lead surfaces
+ *      above one that's been sitting untouched.
+ *   0. Done: Completed / Cancelled / Lost, or a shoot date already behind
+ *      us. Most recent on top, so old history sinks instead of crowding out
+ *      live enquiries.
  *
- * Both tiers are expressed as one ascending sort key: within the shoot-date
- * tier the key *is* the shoot date (ascending = soonest first); within the
- * no-shoot-date tier the key is the enquiry date negated (ascending on a
- * negated value = descending on the real value = newest first).
+ * Each tier is one ascending sort key: tier 2's key *is* the shoot date
+ * (ascending = soonest first); the other tiers use the negated date
+ * (ascending on a negated value = descending on the real one = newest
+ * first).
+ *
+ * `today` is UTC midnight of the current calendar date (see
+ * todayAsUtcMidnight) — a shoot dated today is still upcoming until tomorrow.
+ * A range of dates counts as passed only once its *last* day has.
  */
-export function buildEnquirySortPipeline(filter: Filter<EnquiryMongo>, limit: number): Document[] {
+export function buildEnquirySortPipeline(filter: Filter<EnquiryMongo>, limit: number, today: Date): Document[] {
+  const enquiryDate = { $ifNull: ["$enquiryDate", "$createdAt"] };
   return [
     { $match: filter },
-    { $addFields: { _shootDate: { $min: "$brief.preferredDates" } } },
     {
       $addFields: {
-        _hasShootDate: { $cond: [{ $eq: ["$_shootDate", null] }, 0, 1] },
+        _shootStart: { $min: "$brief.preferredDates" },
+        _shootEnd: { $max: "$brief.preferredDates" },
+      },
+    },
+    {
+      $addFields: {
+        _tier: {
+          $switch: {
+            branches: [
+              { case: { $in: ["$status", ["completed", "cancelled", "lost"]] }, then: 0 },
+              { case: { $and: [{ $ne: ["$_shootEnd", null] }, { $lt: ["$_shootEnd", today] }] }, then: 0 },
+              { case: { $eq: ["$_shootStart", null] }, then: 1 },
+            ],
+            default: 2,
+          },
+        },
+      },
+    },
+    {
+      $addFields: {
         _sortKey: {
           $cond: [
-            { $eq: ["$_shootDate", null] },
-            { $multiply: [-1, { $toLong: { $ifNull: ["$enquiryDate", "$createdAt"] } }] },
-            { $toLong: "$_shootDate" },
+            { $eq: ["$_tier", 2] },
+            { $toLong: "$_shootStart" },
+            { $multiply: [-1, { $toLong: { $ifNull: ["$_shootEnd", enquiryDate] } }] },
           ],
         },
       },
     },
-    { $sort: { _hasShootDate: -1, _sortKey: 1 } },
+    { $sort: { _tier: -1, _sortKey: 1 } },
     { $limit: limit },
-    { $project: { _shootDate: 0, _hasShootDate: 0, _sortKey: 0 } },
+    { $project: { _shootStart: 0, _shootEnd: 0, _tier: 0, _sortKey: 0 } },
   ];
 }

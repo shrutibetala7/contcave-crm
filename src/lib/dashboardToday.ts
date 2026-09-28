@@ -213,7 +213,10 @@ export async function getMetrics(tenantId: string): Promise<TodayMetrics> {
       .find({ tenantId, firstResponseAt: { $ne: null } }, { projection: { createdAt: 1, firstResponseAt: 1 } })
       .limit(2000)
       .toArray(),
-    enquiries.find({ tenantId, status: "confirmed" }, { projection: { _id: 1 } }).limit(5000).toArray(),
+    enquiries
+      .find({ tenantId, status: { $in: ["confirmed", "completed"] } }, { projection: { _id: 1 } })
+      .limit(5000)
+      .toArray(),
   ]);
 
   const outcomeCoveragePct = olderCount > 0 ? Math.round((olderWithOutcome / olderCount) * 1000) / 10 : null;
@@ -229,9 +232,9 @@ export async function getMetrics(tenantId: string): Promise<TodayMetrics> {
       hours.length % 2 === 0 ? Math.round(((hours[mid - 1] + hours[mid]) / 2) * 10) / 10 : Math.round(hours[mid] * 10) / 10;
   }
 
-  // "won" is the enquiries currently at "confirmed" (Confirmed carries the old
-  // closed_won meaning). "Revived" = was dormant at some point, is now confirmed
-  // — any path between the two counts, since the pipeline no longer forces one.
+  // "won" is the enquiries at "confirmed" or on to "completed" (Confirmed carries
+  // the old closed_won meaning). "Revived" = was dormant at some point, is now
+  // won — any path between the two counts, since the pipeline no longer forces one.
   const wonIdStrings = wonIds.map((d) => d._id.toHexString());
   const revivedCount = wonIdStrings.length
     ? (

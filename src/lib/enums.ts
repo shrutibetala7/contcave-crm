@@ -5,18 +5,21 @@
  */
 
 /**
- * The enquiry pipeline, simplified to seven statuses. Any non-terminal
+ * The enquiry pipeline, simplified to eight statuses. Any non-terminal
  * status can move to any other (see stateMachine/enquiryStatus.ts) —
  * there's no forced march through sub-stages any more. Confirmed carries
  * the old "closed_won" meaning (the deal is done, the lead becomes a
- * customer); Cancelled and Lost are both dead ends but for different
- * reasons (an operational reason — the shoot itself fell through — vs. a
- * commercial one — the deal was lost).
+ * customer) and moves on to Completed once the shoot has happened (that
+ * happens by itself after the shoot date — see lib/completeFinishedShoots.ts);
+ * Cancelled and Lost are both dead ends but for different reasons (an
+ * operational reason — the shoot itself fell through — vs. a commercial
+ * one — the deal was lost).
  */
 export const ENQUIRY_STATUSES = [
   "new_lead",
   "in_progress",
   "confirmed",
+  "completed",
   "on_hold",
   "cancelled",
   "lost",
@@ -28,6 +31,7 @@ export const ENQUIRY_STATUS_LABELS: Record<EnquiryStatus, string> = {
   new_lead: "New Lead",
   in_progress: "In Progress",
   confirmed: "Confirmed",
+  completed: "Completed",
   on_hold: "On Hold",
   cancelled: "Cancelled",
   lost: "Lost",

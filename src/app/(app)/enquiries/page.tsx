@@ -8,6 +8,7 @@ import { EnquiriesFilters } from "@/components/enquiries/EnquiriesFilters";
 import { EnquiryTable } from "@/components/enquiries/EnquiryTable";
 import { parseSortParam } from "@/lib/listQuery";
 import { buildEnquirySortPipeline } from "@/lib/enquirySort";
+import { completeFinishedShoots, todayAsUtcMidnight } from "@/lib/completeFinishedShoots";
 import type { EnquiryStatus, EnquirySource } from "@/lib/enums";
 
 export const metadata: Metadata = { title: "Enquiries" };
@@ -38,15 +39,20 @@ export default async function EnquiriesPage({
   }
   const hasFilters = Boolean(sp.status || sp.owner || sp.city || sp.source || sp.q);
 
+  // Confirmed bookings whose shoot date has passed become Completed before we list them.
+  await completeFinishedShoots(session.tenantId);
+
   const enquiries = await enquiriesCol();
 
-  // Default ("date"): shoot date first (soonest on top), then enquiries with
-  // no shoot date yet (newest enquiry on top) — see enquirySort.ts. Any other
-  // explicit value falls back to a plain field sort.
+  // Default ("date"): upcoming shoots (soonest first), then enquiries with no
+  // shoot date yet (newest first), then finished ones — see enquirySort.ts.
+  // Any other explicit value falls back to a plain field sort.
   const sortParam = sp.sort ?? "date";
   let docs: EnquiryMongo[];
   if (sortParam === "date") {
-    docs = await enquiries.aggregate<EnquiryMongo>(buildEnquirySortPipeline(filter, LIMIT)).toArray();
+    docs = await enquiries
+      .aggregate<EnquiryMongo>(buildEnquirySortPipeline(filter, LIMIT, todayAsUtcMidnight()))
+      .toArray();
   } else {
     const sort = parseSortParam(sp.sort, SORTABLE_FIELDS, { nextActionDate: 1, createdAt: -1 });
     docs = await enquiries.find(filter).sort(sort).limit(LIMIT).toArray();

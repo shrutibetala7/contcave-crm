@@ -7,17 +7,16 @@ import { serialize, serializeAll } from "@/lib/db/serialize";
 import { toClientSafe } from "@/lib/serializeForClient";
 import { listUsers } from "@/lib/users";
 import { Icon } from "@/components/Icon";
-import { BRAND_CATEGORY_LABELS } from "@/lib/enums";
 import { completeFinishedShoots } from "@/lib/completeFinishedShoots";
+import { enquiryDisplayName } from "@/lib/enquiryDisplayName";
 import { StatusBadge } from "@/components/StatusBadge";
-import { WhatsAppLink } from "@/components/WhatsAppLink";
+import { ContactLinks } from "@/components/ContactLinks";
 import { NextActionPanel } from "@/components/NextActionPanel";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { BriefPanel } from "@/components/enquiries/BriefPanel";
 import { StatusControl } from "@/components/enquiries/StatusControl";
-import { ShortlistTable } from "@/components/enquiries/ShortlistTable";
+import { StudiosAndBooking } from "@/components/enquiries/StudiosAndBooking";
 import { DelayLog } from "@/components/enquiries/DelayLog";
-import { BookingPanel } from "@/components/enquiries/BookingPanel";
 import { FeedbackPanel } from "@/components/enquiries/FeedbackPanel";
 import { DeleteEnquiryButton } from "@/components/enquiries/DeleteEnquiryButton";
 
@@ -53,7 +52,23 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   ]);
 
   const activities = serializeAll(activityDocs);
-  const studioOptions = studioDocs.map((s) => ({ id: s._id.toHexString(), name: s.name }));
+  const { title: heading, subtitle: subheading } = enquiryDisplayName({
+    code: enquiry.code,
+    contactName: contact?.name,
+    brandName: brand?.name,
+    instagramHandle: contact?.instagramHandle,
+    phone: contact?.phone,
+    industry: enquiry.industry ?? null,
+  });
+  const studioOptions = studioDocs
+    .map((s) => ({ id: s._id.toHexString(), name: s.name, area: [s.locality, s.city].filter(Boolean).join(", ") || null }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Delays only happen to a booked shoot, and feedback only after one — show
+  // each once it applies, or whenever it already holds something.
+  const hasBooking = enquiry.shortlist.some((s) => s.outcome === "picked");
+  const showDelayLog = hasBooking || enquiry.schedule.delayEvents.length > 0;
+  const showFeedback = enquiry.status === "completed" || Boolean(enquiry.feedback.client || enquiry.feedback.studio);
 
   return (
     <div className="space-y-6 pb-10">
@@ -62,7 +77,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
           <Icon name="left" className="size-3.5" /> Enquiries
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-neutral-900">{brand?.name ?? contact?.name ?? enquiry.code}</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-neutral-900">{heading}</h1>
           <StatusBadge status={enquiry.status} />
           {contact?.isCustomer && (
             <span className="rounded-full border border-green-300 px-2 py-0.5 text-xs font-medium text-green-800">
@@ -71,20 +86,19 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-neutral-500">
+          {subheading && subheading !== enquiry.code && (
+            <>
+              <span>{subheading}</span>
+              <span aria-hidden>·</span>
+            </>
+          )}
           <span className="tabular-nums">{enquiry.code}</span>
-          {brand && contact && (
+          {contact && (
             <>
               <span aria-hidden>·</span>
-              <span>{contact.name}</span>
+              <ContactLinks phone={contact.whatsappNumber ?? contact.phone} instagramHandle={contact.instagramHandle} />
             </>
           )}
-          {!brand && enquiry.industry && (
-            <>
-              <span aria-hidden>·</span>
-              <span className="capitalize">{BRAND_CATEGORY_LABELS[enquiry.industry]}</span>
-            </>
-          )}
-          {contact && <WhatsAppLink phone={contact.whatsappNumber} />}
         </div>
       </div>
 
@@ -95,13 +109,16 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             enquiryDate={enquiry.enquiryDate ? new Date(enquiry.enquiryDate).toISOString() : null}
             brief={toClientSafe(enquiry.brief)}
           />
-          <ShortlistTable
+          <StudiosAndBooking
             enquiryId={enquiry.id}
+            status={enquiry.status}
             shortlist={toClientSafe(enquiry.shortlist)}
+            booking={enquiry.booking}
+            preferredDates={enquiry.brief.preferredDates.map((d) => new Date(d).toISOString())}
             studioOptions={studioOptions}
           />
-          <DelayLog enquiryId={enquiry.id} delayEvents={toClientSafe(enquiry.schedule.delayEvents)} />
-          <FeedbackPanel enquiryId={enquiry.id} feedback={toClientSafe(enquiry.feedback)} />
+          {showDelayLog && <DelayLog enquiryId={enquiry.id} delayEvents={toClientSafe(enquiry.schedule.delayEvents)} />}
+          {showFeedback && <FeedbackPanel enquiryId={enquiry.id} feedback={toClientSafe(enquiry.feedback)} />}
           <ActivityTimeline entityType="enquiry" entityId={enquiry.id} activities={toClientSafe(activities)} />
         </div>
         <div className="order-first space-y-4 lg:order-none">
@@ -113,10 +130,8 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             nextActionReason={enquiry.nextActionReason ?? null}
             users={users}
           />
-          {/* Always shown — Confirmed can be reached in one step from any early
-              status, and its guard needs this card's data to be fillable before then. */}
-          <BookingPanel enquiryId={enquiry.id} booking={enquiry.booking} />
-          {enquiry.outcome.result && (
+          {/* A won booking is summarised in Studios & booking; this is for how it ended otherwise. */}
+          {enquiry.outcome.result && enquiry.outcome.result !== "won" && (
             <div className="card p-4 text-sm">
               <h3 className="card-title mb-1">Outcome</h3>
               <p className="capitalize text-neutral-800">{enquiry.outcome.result}</p>

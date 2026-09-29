@@ -1,14 +1,7 @@
 import { enquiriesCol } from "@/lib/db/collections";
 import { assertValidTransition } from "@/lib/stateMachine/enquiryStatus";
 import { writeStatusChangeActivity } from "@/lib/activity";
-
-/**
- * Shoot dates are stored as UTC midnight of the calendar date that was
- * typed, so "today" has to be the same shape to compare like with like.
- */
-export function todayAsUtcMidnight(now: Date = new Date()): Date {
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-}
+import { todayAsUtcMidnight } from "@/lib/businessDay";
 
 /**
  * After the shoot date, a confirmed booking is a completed one. There's no

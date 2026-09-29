@@ -1,7 +1,7 @@
 # ContCave CRM
 
 Phase 1 MVP of the internal ops CRM described in [SPEC.md](./SPEC.md) — two pipelines
-(enquiries, studios), the Today screen, paste-parse quick add, delay log, feedback capture,
+(enquiries, studios), the Pipeline board, paste-parse quick add, delay log, feedback capture,
 and WhatsApp deep links — plus the Change Brief v1.1 additions: evidence tiers on parsed
 data, required reasons on every follow-up, and list state in the URL.
 
@@ -9,7 +9,7 @@ data, required reasons on every follow-up, and list state in the URL.
 
 Next.js (App Router) + TypeScript + Tailwind CSS, MongoDB (native driver), `zod` for
 validation/types, `jose` for session JWTs, `bcryptjs` for password hashing, `date-fns` for
-Today-screen date bucketing, `nuqs` for URL-based list/filter state (Change Brief v1.1 §C).
+date formatting, `nuqs` for URL-based list/filter state (Change Brief v1.1 §C).
 No Docker, no LLM/Anthropic API — see "What's stubbed" below.
 
 ## Setup
@@ -44,16 +44,22 @@ No Docker, no LLM/Anthropic API — see "What's stubbed" below.
    ```bash
    npm run dev
    ```
-   Visit `http://localhost:3000` — it redirects to `/today`.
+   Visit `http://localhost:3000` — it redirects to `/pipeline`.
 
 ## What to click through
+
+The **Pipeline** board is home: every live lead in a column by stage (New leads, In progress,
+Follow up, Confirmed, Closed). Drag a card to another column (or use its ⋯ menu) to change its
+status; moves that need an answer (a follow-up date, why it was lost) ask inside the card.
+Overdue and due-today follow-ups are flagged on the card; "Due now" narrows the board to them.
+The strip above the board shows booking value won and ContCave's 12% commission.
 
 Quick add (press **C** anywhere, or the button in the nav) → paste a WhatsApp-style message
 → review the extracted fields (amber = guessed, click "confirm" or just edit the value) →
 save → land on the new enquiry's detail page → shortlist a studio → set an outcome → walk
 it through the status control → log a delay (with a follow-up reason) → collect feedback.
 Every contact/studio row has a WhatsApp link (`wa.me/...`). Filter the Enquiries/Studios
-lists or the Today screen's owner/range toggles, then hit "Copy view" — paste the URL in a
+lists, then hit "Copy view" — paste the URL in a
 new tab and the exact filtered view comes back.
 
 ## Change Brief v1.1
@@ -71,11 +77,11 @@ Three additive changes on top of the Phase 1 MVP:
   [`src/lib/parseEnquiryText.ts`](./src/lib/parseEnquiryText.ts).
 - **§B Required reasons** — `nextActionDate` (enquiries) and `followUpOn` (delay
   events) now require a `nextActionReason` / `followUpReason` of at least 8 characters in
-  the same write — enforced by Zod refinements, not just UI copy. The Today screen leads
-  with the reason; a record from before this change (or one where the API was called
+  the same write — enforced by Zod refinements, not just UI copy. Pipeline cards show
+  the reason under the follow-up date; a record from before this change (or one where the API was called
   directly) shows an amber "no reason recorded" instead of silently rendering blank.
-- **§C List state in the URL** — Enquiries/Studios filters and the Today screen's
-  owner/range toggles live in query params via `nuqs` (`?status=delayed&owner=<id>&sort=-nextActionDate`),
+- **§C List state in the URL** — Enquiries/Studios filters and the Pipeline's
+  owner/"Due now" toggles live in query params via `nuqs` (`?status=delayed&owner=<id>&sort=-nextActionDate`),
   not component state. Filtered views survive a refresh, are bookmarkable, and step through
   with the browser back button; "Copy view" copies the current URL.
 
@@ -97,7 +103,7 @@ shoot); once it is *completed* it can't be.
   [`src/lib/parseEnquiryText.ts`](./src/lib/parseEnquiryText.ts) for what it can and can't
   pull out, and its doc comment for how to swap in a real model call later.
 - **Everything else is fully wired** against MongoDB — state machines, guards, indexes,
-  the Today aggregation, the §8 metrics — but untested end-to-end in this environment since
+  the Pipeline board, revenue totals — but untested end-to-end in this environment since
   there's no reachable Mongo instance here. `npx tsc --noEmit` and `npm run build` are both
   clean; real verification needs your own `MONGODB_URI`.
 - **File storage** (signed agreements, screenshots — spec §7 says Vercel Blob) isn't wired

@@ -7,6 +7,7 @@ import { handleRoute, parseJson } from "@/lib/api/respond";
 import { NotFoundError, BadRequestError } from "@/lib/api/errors";
 import { contactUpdateSchema } from "@/lib/validation/contact";
 import { normalizePhone } from "@/lib/phone";
+import { normalizeInstagramHandle } from "@/lib/instagram";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -38,6 +39,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const normalized = normalizePhone(input.whatsappNumber);
       if (!normalized) throw new BadRequestError("whatsappNumber could not be normalized to E.164");
       set.whatsappNumber = normalized;
+    }
+    if (input.instagramHandle) {
+      const normalized = normalizeInstagramHandle(input.instagramHandle);
+      if (!normalized) throw new BadRequestError("That Instagram handle doesn't look right");
+      set.instagramHandle = normalized;
     }
 
     const contacts = await contactsCol();

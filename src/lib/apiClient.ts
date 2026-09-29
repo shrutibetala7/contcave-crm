@@ -17,7 +17,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiError(body.error || `Request failed (${res.status})`, res.status, body.issues);
+    // A bare "Validation failed" tells nobody what to fix — name the first field and its problem.
+    const issue = Array.isArray(body.issues) ? body.issues[0] : null;
+    const detail = issue ? ` — ${[...(issue.path ?? [])].join(".") || "input"}: ${issue.message}` : "";
+    throw new ApiError(`${body.error || `Request failed (${res.status})`}${detail}`, res.status, body.issues);
   }
   return body as T;
 }

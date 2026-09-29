@@ -6,6 +6,20 @@ import type { SVGProps } from "react";
  */
 const PATHS = {
   whatsapp: <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />,
+  instagram: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M17.5 6.5h.01" />
+    </>
+  ),
+  more: <path d="M5 12h.01M12 12h.01M19 12h.01" />,
+  calendar: (
+    <>
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M16 2v4M8 2v4M3 10h18" />
+    </>
+  ),
   note: (
     <>
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />

@@ -8,7 +8,8 @@ import { EnquiriesFilters } from "@/components/enquiries/EnquiriesFilters";
 import { EnquiryTable } from "@/components/enquiries/EnquiryTable";
 import { parseSortParam } from "@/lib/listQuery";
 import { buildEnquirySortPipeline } from "@/lib/enquirySort";
-import { completeFinishedShoots, todayAsUtcMidnight } from "@/lib/completeFinishedShoots";
+import { completeFinishedShoots } from "@/lib/completeFinishedShoots";
+import { todayAsUtcMidnight } from "@/lib/businessDay";
 import type { EnquiryStatus, EnquirySource } from "@/lib/enums";
 
 export const metadata: Metadata = { title: "Enquiries" };

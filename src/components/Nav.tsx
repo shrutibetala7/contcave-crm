@@ -6,7 +6,7 @@ import { Icon } from "@/components/Icon";
 import { api } from "@/lib/apiClient";
 
 const LINKS = [
-  { href: "/today", label: "Today" },
+  { href: "/pipeline", label: "Pipeline" },
   { href: "/enquiries", label: "Enquiries" },
   { href: "/studios", label: "Studios" },
 ];

@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/apiClient";
+import { dayKey } from "@/lib/businessDay";
 import { Icon } from "@/components/Icon";
 import { BRAND_CATEGORIES, BRAND_CATEGORY_LABELS, ENQUIRY_SOURCES, SHOOT_TYPES } from "@/lib/enums";
 import {
@@ -32,7 +33,7 @@ const emptyFields: ParsedFields = PARSED_FIELD_ORDER.reduce((acc, key) => {
 
 const FIELD_LABELS: Record<ParsedFieldKey, string> = {
   "contact.name": "Contact name",
-  "contact.phone": "Contact phone (E.164)",
+  "contact.phone": "Phone / WhatsApp",
   "brand.name": "Brand / company",
   "brief.shootType": "Shoot type",
   "brief.city": "City",
@@ -46,8 +47,9 @@ const FIELD_LABELS: Record<ParsedFieldKey, string> = {
   "brief.datesFlexible": "Dates flexible",
 };
 
+/** YYYY-MM-DD in India time — a UTC date would still say "yesterday" before 5:30 am. */
 function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return dayKey(d);
 }
 const TODAY_ISO = () => isoDay(new Date());
 
@@ -60,6 +62,9 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
   const [confirmedKeys, setConfirmedKeys] = useState<Set<ParsedFieldKey>>(new Set());
   const [source, setSource] = useState<(typeof ENQUIRY_SOURCES)[number]>("whatsapp");
   const [industry, setIndustry] = useState("");
+  const [instagramHandle, setInstagramHandle] = useState("");
+  // Saving with no phone and no Instagram is allowed, but only on a second, deliberate click.
+  const [noContactOk, setNoContactOk] = useState(false);
   // Shoot date: flexible, or a tentative date / short range.
   const [datesFlexible, setDatesFlexible] = useState(false);
   const [shootFrom, setShootFrom] = useState("");
@@ -93,6 +98,8 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
     setFields(emptyFields);
     setConfirmedKeys(new Set());
     setIndustry("");
+    setInstagramHandle("");
+    setNoContactOk(false);
     setDatesFlexible(false);
     setShootFrom("");
     setShootTo("");
@@ -155,6 +162,13 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
   async function handleSave(e: FormEvent) {
     e.preventDefault();
     if (blockingKeys.length > 0) return;
+    const contactPhone = (fields["contact.phone"].value as string | null)?.trim() || null;
+    const contactInstagram = instagramHandle.trim() || null;
+    // A warning, not a block: first click explains, the second saves anyway.
+    if (!contactPhone && !contactInstagram && !noContactOk) {
+      setNoContactOk(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -177,12 +191,17 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
         brandId = brandRes.data.id;
       }
 
-      const contactPhone = fields["contact.phone"].value as string | null;
+      // No name given? Name them by how we reach them, never a placeholder.
+      // With no name, phone or handle at all, there's no one to record yet.
+      const contactName =
+        (fields["contact.name"].value as string | null)?.trim() ||
+        (contactInstagram ? `@${contactInstagram.replace(/^@/, "")}` : contactPhone);
       let contactId: string | undefined;
-      if (contactPhone) {
+      if (contactName) {
         const contactRes = await api.post<{ data: { id: string } }>("/api/contacts", {
-          name: (fields["contact.name"].value as string | null) || "Unknown",
+          name: contactName,
           phone: contactPhone,
+          instagramHandle: contactInstagram,
           brandId,
         });
         contactId = contactRes.data.id;
@@ -273,8 +292,8 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
           <form onSubmit={handleSave} className="max-h-[75vh] space-y-4 overflow-y-auto p-5">
             <div>
               <label className="block text-xs font-medium text-neutral-500">
-                Customer query (verbatim if pasted — otherwise describe what they asked for; this is what
-                later trains the parser, so the more real language, the better)
+                Customer query — optional. Their own words if you have them; this is what later trains the
+                parser, so real language beats a summary.
               </label>
               <textarea
                 rows={3}
@@ -345,11 +364,31 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
               >
                 <input
                   value={(fields["contact.phone"].value as string) ?? ""}
-                  onChange={(e) => setValue("contact.phone", e.target.value)}
-                  placeholder="+919876543210"
+                  onChange={(e) => {
+                    setValue("contact.phone", e.target.value);
+                    setNoContactOk(false);
+                  }}
+                  placeholder="98765 43210"
                   className="input"
                 />
               </EvidenceField>
+              <label className="block">
+                <span className="block text-xs font-medium text-neutral-500">Instagram handle</span>
+                <input
+                  value={instagramHandle}
+                  onChange={(e) => {
+                    setInstagramHandle(e.target.value);
+                    setNoContactOk(false);
+                  }}
+                  placeholder="@handle"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  className="input mt-1"
+                />
+              </label>
+              <p className="-mt-1 text-xs text-neutral-500 sm:col-span-2">
+                Add a phone number, an Instagram handle, or both — whatever they reached out on.
+              </p>
               <EvidenceField
                 fieldKey="brand.name"
                 field={fields["brand.name"]}
@@ -485,6 +524,12 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
               </p>
             )}
             {error && <p className="text-sm text-red-600">{error}</p>}
+            {noContactOk && (
+              <p role="status" className="flag-amber block text-xs">
+                No phone number or Instagram handle — the team won&apos;t be able to reach them from the CRM. Add
+                one above, or save anyway and fill it in later.
+              </p>
+            )}
 
             <div className="flex justify-between border-t border-neutral-100 pt-4">
               <button
@@ -499,7 +544,7 @@ export function QuickAddModal({ open, onClose, userId }: Props) {
                 disabled={busy || blockingKeys.length > 0}
                 className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
               >
-                {busy ? "Saving…" : "Save enquiry"}
+                {busy ? "Saving…" : noContactOk ? "Save anyway" : "Save enquiry"}
               </button>
             </div>
           </form>

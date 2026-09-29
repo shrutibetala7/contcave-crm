@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Primary: ContCave's ops team, about five people, who run client and studio relationships from WhatsApp and Instagram DMs. They work mostly on desktop, with WhatsApp Web open beside the CRM, triaging what is due, moving enquiries forward, and chasing follow-ups. Desktop is the primary surface; mobile web must still work but is secondary.
+Primary: ContCave's ops team, about five people, who run client and studio relationships from WhatsApp and Instagram DMs. They work mostly on desktop, with WhatsApp Web open beside the CRM, working a Pipeline board of live leads: moving enquiries forward and chasing follow-ups. Desktop is the primary surface; mobile web must still work but is secondary.
 
 Later audience (confirmed as a stated direction, not yet a plan): studios that would use a studio-facing version of this CRM as a sold product.
 
@@ -20,12 +20,14 @@ Its core principle is that every open record carries a next action with a date, 
 
 ## Positioning
 
-A CRM shaped to studio-booking operations rather than generic B2B sales: an enquiry carries a per-studio shortlist with quotes and loss outcomes, a post-booking lifecycle (scheduled, delayed, completed, feedback), and a separate supply-side onboarding pipeline. Work starts from the Today screen (what is due, why, and for whom), not from a table of all clients. It complements WhatsApp instead of competing with it: every contact and studio row is one tap from the conversation.
+A CRM shaped to studio-booking operations rather than generic B2B sales: an enquiry carries a per-studio shortlist with quotes and loss outcomes, a post-booking lifecycle (scheduled, delayed, completed, feedback), and a separate supply-side onboarding pipeline. Work starts from the Pipeline board (every live lead by stage, with what is due to be chased flagged on the card), not from a table of all clients; the Enquiries table is the searchable history. It complements WhatsApp instead of competing with it: every contact and studio row is one tap from the conversation.
 
 ## Operating Context
 
 - Inbound demand arrives on Instagram DM and WhatsApp; the team pastes chat text into Quick Add, which extracts fields and marks each as observed or inferred before saving.
-- Follow-ups are date-driven and each carries a written reason; the Today screen leads with the reason.
+- Follow-ups are date-driven and each carries a written reason, shown on the lead's card.
+- Leads are identified by who they are (name, brand, Instagram handle), never by enquiry code unless nothing else is known. A contact needs a phone number or an Instagram handle; the customer's own words are kept when available but never required.
+- Revenue is booking value on won enquiries (Confirmed and Completed); ContCave's commission is 12% of it unless a booking records its own.
 - Studios are onboarded against a document checklist (legal document, pictures/videos, pricing, packages/amenities, Aadhar, bank account details, GST optional).
 - Bookings are referenced from the main ContCave platform (`platformBookingId`) or flagged off-platform; the CRM does not hold a second source of truth for booking value.
 - Single tenant today. Every document carries `tenantId`, deliberately, so a later multi-tenant version is a data backfill rather than a schema change.
@@ -33,9 +35,9 @@ A CRM shaped to studio-booking operations rather than generic B2B sales: an enqu
 ## Capabilities and Constraints
 
 - Web app (Next.js App Router, TypeScript, Tailwind, MongoDB); login is bcrypt plus JWT session.
-- Explicitly deferred: kanban views, role-based access UI, WhatsApp Business API and Instagram Messaging API integration, analytics dashboards, background agents or automated enrichment.
+- Explicitly deferred: role-based access UI, WhatsApp Business API and Instagram Messaging API integration, analytics dashboards, background agents or automated enrichment.
 - No LLM in the paste-parse path; it is heuristic by decision.
-- Terminology to preserve: enquiry, shortlist, Today, next action / reason, evidence (observed, inferred, stated), delay event, onboarding checklist.
+- Terminology to preserve: enquiry, shortlist, Pipeline, follow-up / reason, evidence (observed, inferred, stated), delay event, onboarding checklist.
 - Undecided: what a studio-facing (sold) version would change in product scope, packaging or tenancy.
 
 ## Brand Commitments
@@ -50,7 +52,7 @@ The CRM carries the ContCave brand and should read as part of the ContCave produ
 
 ## Product Principles
 
-1. Every open record earns its place on Today: a date, a reason and an owner, or it is closed with an outcome.
+1. Every open record earns its place on the Pipeline: a date, a reason and an owner, or it is closed with an outcome.
 2. Never let a guess pass as a fact: record where each value came from, and make the operator confirm the uncertain ones.
 3. Stay one tap from the conversation; the CRM supports WhatsApp work and must not become a competing system.
 4. Guard the real operational risks (lost enquiries, undocumented losses, shoots in limbo) with friction where it counts, not with ceremony everywhere.

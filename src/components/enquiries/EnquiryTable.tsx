@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
-import { WhatsAppLink } from "@/components/WhatsAppLink";
-import { BRAND_CATEGORY_LABELS } from "@/lib/enums";
+import { ContactLinks } from "@/components/ContactLinks";
+import { enquiryDisplayName } from "@/lib/enquiryDisplayName";
 import type { EnquiryDoc } from "@/types/models";
 import type { ContactMongo } from "@/lib/db/collections";
 
@@ -57,16 +57,20 @@ export function EnquiryTable({
 
   const rows = enquiries.map((e) => {
     const contact = e.contactId ? contactById.get(e.contactId) : undefined;
-    const brand = e.brandId ? brandById.get(e.brandId) : undefined;
-    // Customer first, company second — the code is just an identifier, kept tiny.
-    const name = contact?.name ?? brand ?? e.code;
-    // No named brand? Fall back to the industry captured on the enquiry itself.
-    const company = contact ? brand ?? (e.industry ? BRAND_CATEGORY_LABELS[e.industry] : undefined) : undefined;
+    // Who it is, then their company or industry — the code is just an identifier, kept tiny.
+    const { title: name, subtitle: company } = enquiryDisplayName({
+      code: e.code,
+      contactName: contact?.name,
+      brandName: e.brandId ? brandById.get(e.brandId) : null,
+      instagramHandle: contact?.instagramHandle,
+      phone: contact?.phone,
+      industry: e.industry ?? null,
+    });
     return {
       e,
       contact,
       name,
-      company,
+      company: company === e.code ? null : company,
       showCode: name !== e.code,
       brief: [e.brief.shootType, e.brief.city].filter(Boolean).join(" · "),
       owner: e.ownerId ? userById.get(e.ownerId) : undefined,
@@ -93,7 +97,7 @@ export function EnquiryTable({
             <div className="mt-2 flex items-end justify-between gap-3 text-sm">
               <NextAction date={e.nextActionDate} reason={e.nextActionReason} />
               <span className="relative z-10">
-                <WhatsAppLink phone={contact?.whatsappNumber} className="inline-flex items-center gap-1 text-xs text-green-700 hover:underline" />
+                <ContactLinks phone={contact?.whatsappNumber ?? contact?.phone} instagramHandle={contact?.instagramHandle} compact />
               </span>
             </div>
           </li>
@@ -132,7 +136,7 @@ export function EnquiryTable({
                 <td className="px-4 py-2.5 text-neutral-600">{owner ?? <span className="text-neutral-500">—</span>}</td>
                 <td className="px-4 py-2.5 text-right">
                   <span className="relative z-10">
-                    <WhatsAppLink phone={contact?.whatsappNumber} className="inline-flex items-center gap-1 text-xs text-green-700 hover:underline" />
+                    <ContactLinks phone={contact?.whatsappNumber ?? contact?.phone} instagramHandle={contact?.instagramHandle} compact />
                   </span>
                 </td>
               </tr>

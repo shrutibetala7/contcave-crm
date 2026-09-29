@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
-import { enquiriesCol, contactsCol } from "@/lib/db/collections";
+import { enquiriesCol } from "@/lib/db/collections";
 import { serialize } from "@/lib/db/serialize";
 import { toObjectId } from "@/lib/db/objectId";
 import { handleRoute, parseJson } from "@/lib/api/respond";
 import { NotFoundError } from "@/lib/api/errors";
 import { statusChangeSchema } from "@/lib/validation/enquiry";
 import { assertValidTransition } from "@/lib/stateMachine/enquiryStatus";
-import { writeStatusChangeActivity } from "@/lib/activity";
-import { recomputeBrandRollups } from "@/lib/brandRollup";
+import { afterStatusChange } from "@/lib/statusSideEffects";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -35,27 +34,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
     if (!result) throw new NotFoundError("Enquiry");
 
-    await writeStatusChangeActivity({
+    await afterStatusChange({
       tenantId: session.tenantId,
-      entityType: "enquiry",
-      entityId: id,
+      enquiry: result,
       from: enquiry.status,
       to: input.to,
       note: input.note,
-      createdBy: session.sub,
+      userId: session.sub,
     });
-
-    // Once confirmed, the lead becomes a customer.
-    if (input.to === "confirmed" && result.contactId) {
-      await (await contactsCol()).updateOne(
-        { _id: toObjectId(result.contactId), tenantId: session.tenantId },
-        { $set: { isCustomer: true, updatedAt: new Date() } }
-      );
-    }
-
-    if ((input.to === "confirmed" || input.to === "lost" || input.to === "cancelled") && result.brandId) {
-      await recomputeBrandRollups(session.tenantId, result.brandId);
-    }
 
     return NextResponse.json({ data: serialize(result) });
   });

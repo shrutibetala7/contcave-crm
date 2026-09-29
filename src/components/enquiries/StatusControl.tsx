@@ -29,7 +29,10 @@ export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string;
   const [error, setError] = useState<string | null>(null);
 
   const options: EnquiryStatus[] = allowedNextStatuses(currentStatus);
-  const list = ENQUIRY_STATUSES.filter((s) => s === currentStatus || options.includes(s));
+  // Confirming needs a studio, a value and a shoot date — that's the Book
+  // step in Studios & booking, so it isn't offered as a bare status here.
+  const canBook = options.includes("confirmed");
+  const list = ENQUIRY_STATUSES.filter((s) => s === currentStatus || (options.includes(s) && s !== "confirmed"));
 
   const needsDetails = (to: EnquiryStatus) => to === "lost" || to === "cancelled" || to === "dormant";
 
@@ -89,6 +92,15 @@ export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string;
       </select>
 
       {closed && <p className="text-xs text-neutral-500">This enquiry is closed, so its status can no longer change.</p>}
+      {canBook && (
+        <p className="text-xs text-neutral-500">
+          To confirm,{" "}
+          <a href="#booking" className="font-medium text-neutral-800 underline underline-offset-2">
+            book the studio they chose
+          </a>
+          .
+        </p>
+      )}
       {currentStatus === "confirmed" && (
         <p className="text-xs text-neutral-500">
           Moves to Completed by itself once the shoot date has passed. Until then it can still go On Hold or Cancelled if

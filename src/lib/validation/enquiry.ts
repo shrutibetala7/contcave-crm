@@ -27,7 +27,9 @@ export const fieldEvidenceSchema = z.object({
 export type FieldEvidence = z.infer<typeof fieldEvidenceSchema>;
 
 export const briefSchema = z.object({
-  rawText: z.string().min(1),
+  // The customer's own words. Worth keeping (it's what the parser learns
+  // from), but not worth losing a whole enquiry over when nobody wrote it down.
+  rawText: z.string().default(""),
   shootType: z.enum(SHOOT_TYPES).nullable().optional(),
   deliverables: z.string().nullable().optional(),
   city: z.string().nullable().optional(),
@@ -122,6 +124,18 @@ export const bookingSchema = z.object({
   currency: z.literal("INR").default("INR"),
 });
 export type Booking = z.infer<typeof bookingSchema>;
+
+// ---- book a studio (one step: pick + booking + shoot date + confirm) ----------
+
+export const bookStudioSchema = z.object({
+  shortlistEntryId: z.string().min(1),
+  grossValue: z.number().positive("Enter what the booking is worth"),
+  // Empty = booked off-platform.
+  platformBookingId: z.string().trim().nullable().optional(),
+  // A single day, or the first and last day of a multi-day shoot.
+  shootDates: z.array(z.coerce.date()).min(1, "Add the shoot date").max(2),
+});
+export type BookStudioInput = z.infer<typeof bookStudioSchema>;
 
 // ---- enquiry update ---------------------------------------------------------
 

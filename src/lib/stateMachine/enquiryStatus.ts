@@ -1,6 +1,6 @@
 import { ENQUIRY_STATUSES, type EnquiryStatus } from "@/lib/enums";
 import { TransitionError } from "@/lib/stateMachine/errors";
-import type { Booking, Feedback, Schedule, ShortlistEntryDoc, StatusChangeInput } from "@/lib/validation/enquiry";
+import type { Booking, Brief, Feedback, Schedule, ShortlistEntryDoc, StatusChangeInput } from "@/lib/validation/enquiry";
 
 /**
  * The enquiry pipeline is eight statuses (see lib/enums.ts): New Lead, In
@@ -21,6 +21,7 @@ export interface EnquiryStateInput {
   booking: Booking;
   schedule: Schedule;
   feedback: Feedback;
+  brief?: Pick<Brief, "preferredDates">;
 }
 
 export interface TransitionResult {
@@ -39,12 +40,14 @@ function isAllowedTransition(from: EnquiryStatus, to: EnquiryStatus): boolean {
 function runGuard(to: EnquiryStatus, enquiry: EnquiryStateInput, payload: StatusChangeInput): void {
   switch (to) {
     case "confirmed": {
+      // One step in the UI (Book on the chosen studio) fills in all three of these.
       const picked = enquiry.shortlist.filter((s) => s.outcome === "picked");
-      if (picked.length !== 1) {
-        throw new TransitionError("Pick exactly one studio in the shortlist before confirming.");
+      if (picked.length !== 1 || (!enquiry.booking.platformBookingId && !enquiry.booking.offPlatform)) {
+        throw new TransitionError("Book a studio first — on the enquiry, click Book next to the studio they chose.");
       }
-      if (!enquiry.booking.platformBookingId && !enquiry.booking.offPlatform) {
-        throw new TransitionError("Add the booking details (or mark it as closed off-platform) before confirming.");
+      // Without a shoot date it could never move on to Completed by itself.
+      if (!enquiry.brief?.preferredDates?.length) {
+        throw new TransitionError("Add the shoot date before confirming.");
       }
       break;
     }

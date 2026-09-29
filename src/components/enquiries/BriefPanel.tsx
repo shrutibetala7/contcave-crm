@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { api, ApiError } from "@/lib/apiClient";
+import { dayKey } from "@/lib/businessDay";
 import type { Brief, FieldEvidence } from "@/types/models";
 
 /** Amber marker + confirm action for any field still "inferred" with no confirmedBy. */
@@ -47,8 +48,9 @@ function formatShootDate(flexible: boolean, dates: (Date | string)[]): string {
   return `${format(sorted[0], "d MMM")} – ${format(sorted[sorted.length - 1], "d MMM yyyy")}`;
 }
 
+/** YYYY-MM-DD in India time — a UTC date would still say "yesterday" before 5:30 am. */
 function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return dayKey(d);
 }
 
 /**
@@ -77,7 +79,8 @@ function EnquiryDateRow({ enquiryId, enquiryDate }: { enquiryId: string; enquiry
     setBusy(true);
     setError(null);
     try {
-      const value = useToday ? new Date() : new Date(date);
+      // Stored as UTC midnight of the calendar day, like every other date.
+      const value = new Date(useToday ? isoDay(new Date()) : date);
       await api.patch(`/api/enquiries/${enquiryId}`, { enquiryDate: value.toISOString() });
       setEditing(false);
       router.refresh();
@@ -163,8 +166,8 @@ export function BriefPanel({
     setDateError(null);
     setFlexible(brief.datesFlexible);
     const [d0, d1] = brief.preferredDates ?? [];
-    setDateFrom(d0 ? new Date(d0).toISOString().slice(0, 10) : "");
-    setDateTo(d1 ? new Date(d1).toISOString().slice(0, 10) : "");
+    setDateFrom(d0 ? dayKey(d0) : "");
+    setDateTo(d1 ? dayKey(d1) : "");
     setEditingDates(true);
   }
 
@@ -194,12 +197,12 @@ export function BriefPanel({
   return (
     <div className="card space-y-3 p-4">
       <div>
-        <h3 className="mb-1 card-title">
-          Brief (verbatim)
-        </h3>
-        <p className="whitespace-pre-wrap rounded-md bg-neutral-50 p-3 text-sm text-neutral-700">
-          {brief.rawText}
-        </p>
+        <h3 className="mb-1 card-title">Customer query</h3>
+        {brief.rawText.trim() ? (
+          <p className="whitespace-pre-wrap rounded-md bg-neutral-50 p-3 text-sm text-neutral-700">{brief.rawText}</p>
+        ) : (
+          <p className="rounded-md bg-neutral-50 p-3 text-sm text-neutral-500">Not recorded.</p>
+        )}
       </div>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <EnquiryDateRow enquiryId={enquiryId} enquiryDate={enquiryDate} />

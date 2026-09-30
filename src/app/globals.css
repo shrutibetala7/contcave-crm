@@ -4,9 +4,137 @@
   --background: #fafafa;
   --foreground: #171717;
   --ink-muted: #737373; /* neutral-500 — the lightest text that still clears 4.5:1 on white */
-  accent-color: #171717;
+  --ink-strong: #171717; /* focus ring, selection, checkbox accent */
+  --on-strong: #fafafa;
+  --scroll-thumb: #d4d4d4;
+  accent-color: var(--ink-strong);
   scrollbar-width: thin;
-  scrollbar-color: #d4d4d4 transparent;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+/*
+ * Night mode. Every colour in the app is a Tailwind palette utility, so
+ * night mode is the palette redefined here — nothing in a component knows
+ * which mode it's in. Toggled by the "dark" class on <html> (see
+ * ThemeToggle and the no-flash script in the root layout).
+ */
+html.dark {
+  color-scheme: dark; /* native date pickers, scrollbars and form controls follow */
+  --background: #0f0f0f;
+  --foreground: #f2f2f2;
+  --ink-muted: #949494;
+  --ink-strong: #f2f2f2;
+  --on-strong: #0f0f0f;
+  --scroll-thumb: #3d3d3d;
+  /* Neutrals: 50 = page and insets, white = cards and inputs, 900 = primary text and buttons. */
+  --color-white: #1e1e1e;
+  --color-neutral-50: #0f0f0f;
+  --color-neutral-100: #171717;
+  --color-neutral-200: #2c2c2c;
+  --color-neutral-300: #3d3d3d;
+  --color-neutral-400: #565656;
+  --color-neutral-500: #949494;
+  --color-neutral-600: #a8a8a8;
+  --color-neutral-700: #c6c6c6;
+  --color-neutral-800: #dedede;
+  --color-neutral-900: #f2f2f2;
+  --color-neutral-950: #fafafa;
+  /* red: the light scale mirrored (50 becomes 950), so tints go deep and text goes pale */
+  --color-red-50: oklch(25.8% 0.092 26.042);
+  --color-red-100: oklch(39.6% 0.141 25.723);
+  --color-red-200: oklch(44.4% 0.177 26.899);
+  --color-red-300: oklch(50.5% 0.213 27.518);
+  --color-red-400: oklch(57.7% 0.245 27.325);
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-red-600: oklch(70.4% 0.191 22.216);
+  --color-red-700: oklch(80.8% 0.114 19.571);
+  --color-red-800: oklch(88.5% 0.062 18.334);
+  --color-red-900: oklch(93.6% 0.032 17.717);
+  --color-red-950: oklch(97.1% 0.013 17.38);
+  /* orange: the light scale mirrored (50 becomes 950), so tints go deep and text goes pale */
+  --color-orange-50: oklch(26.6% 0.079 36.259);
+  --color-orange-100: oklch(40.8% 0.123 38.172);
+  --color-orange-200: oklch(47% 0.157 37.304);
+  --color-orange-300: oklch(55.3% 0.195 38.402);
+  --color-orange-400: oklch(64.6% 0.222 41.116);
+  --color-orange-500: oklch(70.5% 0.213 47.604);
+  --color-orange-600: oklch(75% 0.183 55.934);
+  --color-orange-700: oklch(83.7% 0.128 66.29);
+  --color-orange-800: oklch(90.1% 0.076 70.697);
+  --color-orange-900: oklch(95.4% 0.038 75.164);
+  --color-orange-950: oklch(98% 0.016 73.684);
+  /* amber: the light scale mirrored (50 becomes 950), so tints go deep and text goes pale */
+  --color-amber-50: oklch(27.9% 0.077 45.635);
+  --color-amber-100: oklch(41.4% 0.112 45.904);
+  --color-amber-200: oklch(47.3% 0.137 46.201);
+  --color-amber-300: oklch(55.5% 0.163 48.998);
+  --color-amber-400: oklch(66.6% 0.179 58.318);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-amber-600: oklch(82.8% 0.189 84.429);
+  --color-amber-700: oklch(87.9% 0.169 91.605);
+  --color-amber-800: oklch(92.4% 0.12 95.746);
+  --color-amber-900: oklch(96.2% 0.059 95.617);
+  --color-amber-950: oklch(98.7% 0.022 95.277);
+  /* green: the light scale mirrored (50 becomes 950), so tints go deep and text goes pale */
+  --color-green-50: oklch(26.6% 0.065 152.934);
+  --color-green-100: oklch(39.3% 0.095 152.535);
+  --color-green-200: oklch(44.8% 0.119 151.328);
+  --color-green-300: oklch(52.7% 0.154 150.069);
+  --color-green-400: oklch(62.7% 0.194 149.214);
+  --color-green-500: oklch(72.3% 0.219 149.579);
+  --color-green-600: oklch(79.2% 0.209 151.711);
+  --color-green-700: oklch(87.1% 0.15 154.449);
+  --color-green-800: oklch(92.5% 0.084 155.995);
+  --color-green-900: oklch(96.2% 0.044 156.743);
+  --color-green-950: oklch(98.2% 0.018 155.826);
+  /* teal: the light scale mirrored (50 becomes 950), so tints go deep and text goes pale */
+  --color-teal-50: oklch(27.7% 0.046 192.524);
+  --color-teal-100: oklch(38.6% 0.063 188.416);
+  --color-teal-200: oklch(43.7% 0.078 188.216);
+  --color-teal-300: oklch(51.1% 0.096 186.391);
+  --color-teal-400: oklch(60% 0.118 184.704);
+  --color-teal-500: oklch(70.4% 0.14 182.503);
+  --color-teal-600: oklch(77.7% 0.152 181.912);
+  --color-teal-700: oklch(85.5% 0.138 181.071);
+  --color-teal-800: oklch(91% 0.096 180.426);
+  --color-teal-900: oklch(95.3% 0.051 180.801);
+  --color-teal-950: oklch(98.4% 0.014 180.72);
+  /* blue: the light scale mirrored (50 becomes 950), so tints go deep and text goes pale */
+  --color-blue-50: oklch(28.2% 0.091 267.935);
+  --color-blue-100: oklch(37.9% 0.146 265.522);
+  --color-blue-200: oklch(42.4% 0.199 265.638);
+  --color-blue-300: oklch(48.8% 0.243 264.376);
+  --color-blue-400: oklch(54.6% 0.245 262.881);
+  --color-blue-500: oklch(62.3% 0.214 259.815);
+  --color-blue-600: oklch(70.7% 0.165 254.624);
+  --color-blue-700: oklch(80.9% 0.105 251.813);
+  --color-blue-800: oklch(88.2% 0.059 254.128);
+  --color-blue-900: oklch(93.2% 0.032 255.585);
+  --color-blue-950: oklch(97% 0.014 254.604);
+  /* purple: the light scale mirrored (50 becomes 950), so tints go deep and text goes pale */
+  --color-purple-50: oklch(29.1% 0.149 302.717);
+  --color-purple-100: oklch(38.1% 0.176 304.987);
+  --color-purple-200: oklch(43.8% 0.218 303.724);
+  --color-purple-300: oklch(49.6% 0.265 301.924);
+  --color-purple-400: oklch(55.8% 0.288 302.321);
+  --color-purple-500: oklch(62.7% 0.265 303.9);
+  --color-purple-600: oklch(71.4% 0.203 305.504);
+  --color-purple-700: oklch(82.7% 0.119 306.383);
+  --color-purple-800: oklch(90.2% 0.063 306.703);
+  --color-purple-900: oklch(94.6% 0.033 307.174);
+  --color-purple-950: oklch(97.7% 0.014 308.299);
+  /* pink: the light scale mirrored (50 becomes 950), so tints go deep and text goes pale */
+  --color-pink-50: oklch(28.4% 0.109 3.907);
+  --color-pink-100: oklch(40.8% 0.153 2.432);
+  --color-pink-200: oklch(45.9% 0.187 3.815);
+  --color-pink-300: oklch(52.5% 0.223 3.958);
+  --color-pink-400: oklch(59.2% 0.249 0.584);
+  --color-pink-500: oklch(65.6% 0.241 354.308);
+  --color-pink-600: oklch(71.8% 0.202 349.761);
+  --color-pink-700: oklch(82.3% 0.12 346.018);
+  --color-pink-800: oklch(89.9% 0.061 343.231);
+  --color-pink-900: oklch(94.8% 0.028 342.258);
+  --color-pink-950: oklch(97.1% 0.014 343.198);
 }
 
 @theme inline {
@@ -22,13 +150,13 @@ body {
 }
 
 ::selection {
-  background: #171717;
-  color: #fafafa;
+  background: var(--ink-strong);
+  color: var(--on-strong);
 }
 
 /* Every interactive element gets a visible keyboard ring; mouse clicks don't. */
 :focus-visible {
-  outline: 2px solid #171717;
+  outline: 2px solid var(--ink-strong);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -41,6 +169,9 @@ body {
 @layer components {
   .input {
     @apply w-full rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-900 transition-colors hover:border-neutral-400 focus:border-neutral-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900/15;
+  }
+  html.dark select.input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23949494' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
   select.input {
     appearance: none;

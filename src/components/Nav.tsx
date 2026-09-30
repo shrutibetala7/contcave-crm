@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { api } from "@/lib/apiClient";
+import { SoundToggle, ThemeToggle } from "@/components/PreferenceToggles";
 
 const LINKS = [
   { href: "/pipeline", label: "Pipeline" },
@@ -59,6 +60,10 @@ export function Nav({
               C
             </span>
           </button>
+          <span className="flex items-center">
+            <SoundToggle />
+            <ThemeToggle />
+          </span>
           <span className="hidden text-sm text-neutral-600 sm:inline">{userName}</span>
           <button onClick={logout} className="link-quiet py-2 text-sm">
             Sign out

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/apiClient";
 import { CANCEL_REASONS, CANCEL_REASON_LABELS, ENQUIRY_STATUSES, ENQUIRY_STATUS_LABELS, LOSS_REASONS, type EnquiryStatus } from "@/lib/enums";
+import { celebrate } from "@/lib/celebrate";
 import { allowedNextStatuses } from "@/lib/stateMachine/enquiryStatus";
 
 const label = (s: string) => s.replace(/_/g, " ");
@@ -52,6 +53,7 @@ export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string;
       });
       setPending(null);
       router.refresh();
+      if (to === "completed") celebrate();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not change the status.");
     } finally {

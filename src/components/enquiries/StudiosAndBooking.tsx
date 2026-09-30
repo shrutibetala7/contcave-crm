@@ -8,6 +8,7 @@ import { dayKey, formatShortDay } from "@/lib/businessDay";
 import { COMMISSION_RATE_LABEL, commissionFor, formatINR } from "@/lib/money";
 import type { EnquiryStatus, ShortlistOutcome } from "@/lib/enums";
 import type { Booking, ShortlistEntryDoc } from "@/types/models";
+import { celebrate } from "@/lib/celebrate";
 import { StudioPicker, type StudioOption } from "@/components/enquiries/StudioPicker";
 
 /** What the client said about each studio offered — "picked" only ever comes from Book. */
@@ -302,6 +303,7 @@ function BookForm({
         shootDates: [from, to].filter((d, i) => d && !(i === 1 && d === from)).map(fromKey),
       });
       onDone();
+      if (!alreadyBooked) celebrate(); // a new booking, not an edit to an existing one
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save the booking.");
     } finally {

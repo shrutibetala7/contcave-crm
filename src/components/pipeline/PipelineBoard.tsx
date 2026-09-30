@@ -15,6 +15,7 @@ import {
 import { PIPELINE_COLUMNS, moveInto, type ColumnKey, type ColumnMove } from "@/lib/pipelineColumns";
 import { dayKey } from "@/lib/businessDay";
 import type { PipelineCard as Card, PipelineColumnData } from "@/lib/pipeline";
+import { celebrate } from "@/lib/celebrate";
 import { PipelineCard } from "@/components/pipeline/PipelineCard";
 
 const MIN_REASON = 8;
@@ -332,6 +333,7 @@ function PendingForm({
         });
       }
       onDone();
+      if (pending.move.kind === "close" && outcome === "completed") celebrate();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save that.");
     } finally {

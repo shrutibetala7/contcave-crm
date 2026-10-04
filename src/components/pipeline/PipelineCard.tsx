@@ -94,7 +94,7 @@ export function PipelineCard({
         )}
       </div>
 
-      {(card.detail || card.shootLabel || card.valueLabel) && (
+      {(card.detail || card.shootLabel || card.valueLabel || card.estimateLabel) && (
         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-neutral-600">
           {card.detail && <span className="truncate">{card.detail}</span>}
           {card.shootLabel && (
@@ -104,6 +104,11 @@ export function PipelineCard({
             </span>
           )}
           {card.valueLabel && <span className="font-medium tabular-nums text-neutral-800">{card.valueLabel}</span>}
+          {card.estimateLabel && (
+            <span className="tabular-nums text-neutral-500" title="Estimated from the studio quote or their budget">
+              {card.estimateLabel}
+            </span>
+          )}
         </p>
       )}
 
@@ -125,7 +130,14 @@ export function PipelineCard({
               Follow-up date
             </button>
           )}
-          {card.ageLabel && <span className="text-xs text-neutral-500">{card.ageLabel}</span>}
+          {card.ageLabel &&
+            (card.replyOverdue ? (
+              <span className={`${TONE.overdue} whitespace-nowrap`} title="No first reply yet — the target is 2 hours">
+                {card.ageLabel} · no reply
+              </span>
+            ) : (
+              <span className="text-xs text-neutral-500">{card.ageLabel}</span>
+            ))}
           {card.outcomeLabel && (
             <span className={`${OUTCOME_TONE[card.status] ?? CHIP} max-w-full truncate`}>{card.outcomeLabel}</span>
           )}

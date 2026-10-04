@@ -5,8 +5,9 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
  * Money so far, across the whole team (the owner filter doesn't apply):
- * what the bookings are worth, ContCave's cut of that, and how much of it
- * is from shoots that have actually happened vs. still ahead.
+ * what the bookings are worth, ContCave's cut of that, how much of it has
+ * actually been paid, what's still ahead, and what open leads would add
+ * (from their studio quotes, or the client's budget where there's no quote).
  */
 export function RevenueSummary({ summary }: { summary: Summary }) {
   return (
@@ -23,7 +24,16 @@ export function RevenueSummary({ summary }: { summary: Summary }) {
         <div className="flex flex-wrap gap-x-2">
           <dt className="text-neutral-500">Shoots done:</dt>
           <dd className="tabular-nums text-neutral-800">
-            {formatINR(summary.completedCommission)} earned · {plural(summary.completedCount, "shoot")}
+            {formatINR(summary.receivedCommission)} collected
+            {summary.owedCount > 0 && (
+              <>
+                {" · "}
+                <span className="font-medium text-amber-800">
+                  {formatINR(summary.owedCommission)} not yet received
+                </span>
+              </>
+            )}{" "}
+            · {plural(summary.completedCount, "shoot")}
           </dd>
         </div>
         <div className="flex flex-wrap gap-x-2">
@@ -32,6 +42,28 @@ export function RevenueSummary({ summary }: { summary: Summary }) {
             {formatINR(summary.upcomingCommission)} to come · {plural(summary.upcomingCount, "booking")}
           </dd>
         </div>
+        <div className="flex flex-wrap gap-x-2">
+          <dt className="text-neutral-500">In the pipeline:</dt>
+          <dd className="tabular-nums text-neutral-800">
+            {summary.pipelineEstimatedCount > 0 ? (
+              <>
+                ~{formatINR(summary.pipelineCommission)} if all {plural(summary.pipelineEstimatedCount, "quoted lead")} book
+                <span className="text-neutral-500"> (~{formatINR(summary.pipelineValue)} in bookings)</span>
+              </>
+            ) : (
+              "No quotes or budgets on open leads yet"
+            )}
+            {summary.pipelineUnestimatedCount > 0 && (
+              <span className="text-neutral-500"> · {summary.pipelineUnestimatedCount} with no quote or budget</span>
+            )}
+          </dd>
+        </div>
+        {summary.owedOffPlatformCount > 0 && (
+          <p className="mt-1 text-xs text-amber-800">
+            {plural(summary.owedOffPlatformCount, "off-platform shoot")} still {summary.owedOffPlatformCount === 1 ? "owes" : "owe"} us
+            commission — mark it received on the enquiry once the studio pays.
+          </p>
+        )}
         {summary.missingValueCount > 0 && (
           <p className="mt-1 text-xs text-amber-800">
             {plural(summary.missingValueCount, "won booking")} {summary.missingValueCount === 1 ? "has" : "have"} no value entered, so{" "}

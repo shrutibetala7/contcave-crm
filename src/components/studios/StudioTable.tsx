@@ -2,8 +2,25 @@ import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import { WhatsAppLink } from "@/components/WhatsAppLink";
 import type { StudioDoc } from "@/types/models";
+import { formatShortDay } from "@/lib/businessDay";
+import type { StudioBookingStats } from "@/lib/studioDemand";
 
-export function StudioTable({ studios, hasFilters }: { studios: StudioDoc[]; hasFilters: boolean }) {
+/** Whether onboarding has turned into shoots — the stage alone can't say. */
+function bookingsLabel(stats: StudioBookingStats | undefined, stage: StudioDoc["stage"]): string {
+  if (!stats) return stage === "verified" || stage === "curated" ? "No bookings yet" : "—";
+  const last = stats.lastShoot ? ` · last ${formatShortDay(stats.lastShoot)}` : "";
+  return `${stats.count} booking${stats.count === 1 ? "" : "s"}${last}`;
+}
+
+export function StudioTable({
+  studios,
+  bookingStats,
+  hasFilters,
+}: {
+  studios: StudioDoc[];
+  bookingStats: Map<string, StudioBookingStats>;
+  hasFilters: boolean;
+}) {
   if (studios.length === 0) {
     return (
       <div className="card px-4 py-10 text-center">
@@ -21,12 +38,13 @@ export function StudioTable({ studios, hasFilters }: { studios: StudioDoc[]; has
     s,
     primary: s.contacts.find((c) => c.isPrimary) ?? s.contacts[0],
     place: [s.locality, s.city].filter(Boolean).join(", "),
+    bookings: bookingsLabel(bookingStats.get(s.id), s.stage),
   }));
 
   return (
     <>
       <ul className="card divide-y divide-neutral-100 sm:hidden">
-        {rows.map(({ s, primary, place }) => (
+        {rows.map(({ s, primary, place, bookings }) => (
           <li key={s.id} className="relative px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -34,6 +52,7 @@ export function StudioTable({ studios, hasFilters }: { studios: StudioDoc[]; has
                   {s.name}
                 </Link>
                 <p className="truncate text-xs text-neutral-500">{place || "No location"}</p>
+                <p className="truncate text-xs tabular-nums text-neutral-600">{bookings}</p>
               </div>
               <StatusBadge status={s.stage} />
             </div>
@@ -53,12 +72,13 @@ export function StudioTable({ studios, hasFilters }: { studios: StudioDoc[]; has
             <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
               <th scope="col" className="px-4 py-2 font-medium">Studio</th>
               <th scope="col" className="px-4 py-2 font-medium">Status</th>
+              <th scope="col" className="px-4 py-2 font-medium">Bookings</th>
               <th scope="col" className="px-4 py-2 font-medium">Contact</th>
               <th scope="col" className="px-4 py-2"><span className="sr-only">Chat</span></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ s, primary, place }) => (
+            {rows.map(({ s, primary, place, bookings }) => (
               <tr key={s.id} className="relative border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50">
                 <td className="px-4 py-2.5">
                   <Link href={`/studios/${s.id}`} className="font-medium text-neutral-900 after:absolute after:inset-0 hover:underline">
@@ -69,6 +89,7 @@ export function StudioTable({ studios, hasFilters }: { studios: StudioDoc[]; has
                 <td className="px-4 py-2.5">
                   <StatusBadge status={s.stage} />
                 </td>
+                <td className="px-4 py-2.5 tabular-nums text-neutral-600">{bookings}</td>
                 <td className="px-4 py-2.5 text-neutral-600">{primary?.name ?? <span className="text-neutral-500">—</span>}</td>
                 <td className="px-4 py-2.5 text-right">
                   <span className="relative z-10">

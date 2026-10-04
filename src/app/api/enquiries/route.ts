@@ -121,6 +121,8 @@ export async function POST(request: NextRequest) {
         grossValue: null,
         commissionValue: null,
         currency: "INR",
+        commissionInvoicedAt: null,
+        commissionReceivedAt: null,
       },
       schedule: { originalShootDate: null, currentShootDate: null, endDate: null, delayEvents: [] },
       feedback: {},

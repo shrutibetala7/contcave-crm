@@ -1,4 +1,4 @@
-import { ENQUIRY_STATUSES, type EnquiryStatus } from "@/lib/enums";
+import { ENQUIRY_STATUSES, LOSS_REASON_LABELS, type EnquiryStatus } from "@/lib/enums";
 import { TransitionError } from "@/lib/stateMachine/errors";
 import type { Booking, Brief, Feedback, Schedule, ShortlistEntryDoc, StatusChangeInput } from "@/lib/validation/enquiry";
 
@@ -22,6 +22,7 @@ export interface EnquiryStateInput {
   schedule: Schedule;
   feedback: Feedback;
   brief?: Pick<Brief, "preferredDates">;
+  firstResponseAt?: Date | null;
 }
 
 export interface TransitionResult {
@@ -67,12 +68,13 @@ function runGuard(to: EnquiryStatus, enquiry: EnquiryStateInput, payload: Status
       break;
     }
     case "dormant": {
+      // Parking is how dead leads used to dodge Lost — so it asks the same
+      // question, from the same list, and the answer lands in the numbers.
+      if (!payload.lossReason) {
+        throw new TransitionError("Choose why it's being parked.");
+      }
       if (!payload.nextActionDate) {
         throw new TransitionError("Set a date to revisit this enquiry.");
-      }
-      // Change Brief v1.1 §B: a date with no reason is a date with no context.
-      if ((payload.nextActionReason?.trim().length ?? 0) < 8) {
-        throw new TransitionError("Say why it's parked (at least 8 characters).");
       }
       break;
     }
@@ -126,10 +128,22 @@ export function assertValidTransition(
     set["outcome.closedAt"] = new Date();
   } else if (target === "dormant") {
     set["outcome.result"] = "dormant";
+    set["outcome.lossReason"] = payload.lossReason;
+    set["outcome.lossNote"] = payload.lossNote ?? null;
     set["nextActionDate"] = payload.nextActionDate;
-    set["nextActionReason"] = payload.nextActionReason;
+    // The structured reason carries the "why"; the note is optional extra context.
+    const note = payload.nextActionReason?.trim() ?? "";
+    set["nextActionReason"] =
+      note.length >= 8 ? note : `Revisit — parked: ${LOSS_REASON_LABELS[payload.lossReason!].toLowerCase()}`;
   } else if (from === "dormant") {
     set["outcome.result"] = null; // revived
+    set["outcome.lossReason"] = null;
+    set["outcome.lossNote"] = null;
+  }
+
+  // Leaving New Lead means someone replied — the response-time clock stops.
+  if (from === "new_lead" && !enquiry.firstResponseAt) {
+    set["firstResponseAt"] = new Date();
   }
 
   return { set };

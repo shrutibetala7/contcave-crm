@@ -11,6 +11,8 @@ import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { StageControl } from "@/components/studios/StageControl";
 import { StudioDetails } from "@/components/studios/StudioDetails";
 import { OnboardingChecklist } from "@/components/studios/OnboardingChecklist";
+import { getStudioBookingStats } from "@/lib/studioDemand";
+import { formatShortDay } from "@/lib/businessDay";
 
 export default async function StudioDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
@@ -24,11 +26,15 @@ export default async function StudioDetailPage({ params }: { params: Promise<{ i
 
   const studio = serialize(doc);
 
-  const activityDocs = await (await activitiesCol())
-    .find({ tenantId: session.tenantId, entityType: "studio", entityId: id })
-    .sort({ occurredAt: -1 })
-    .limit(200)
-    .toArray();
+  const [activityDocs, bookingStats] = await Promise.all([
+    (await activitiesCol())
+      .find({ tenantId: session.tenantId, entityType: "studio", entityId: id })
+      .sort({ occurredAt: -1 })
+      .limit(200)
+      .toArray(),
+    getStudioBookingStats(session.tenantId),
+  ]);
+  const bookings = bookingStats.get(id);
   const activities = serializeAll(activityDocs);
 
   return (
@@ -41,6 +47,11 @@ export default async function StudioDetailPage({ params }: { params: Promise<{ i
           <h1 className="text-xl font-semibold tracking-tight text-neutral-900">{studio.name}</h1>
           <StatusBadge status={studio.stage} />
         </div>
+        <p className="mt-1 text-sm tabular-nums text-neutral-500">
+          {bookings
+            ? `${bookings.count} booking${bookings.count === 1 ? "" : "s"} through us${bookings.lastShoot ? ` · last shoot ${formatShortDay(bookings.lastShoot)}` : ""}`
+            : "No bookings through us yet"}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

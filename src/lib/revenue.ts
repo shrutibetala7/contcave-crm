@@ -1,5 +1,5 @@
 import { enquiriesCol } from "@/lib/db/collections";
-import { commissionFor } from "@/lib/money";
+import { commissionFor, estimatedValue } from "@/lib/money";
 
 export interface RevenueSummary {
   /** Gross value of every won booking (Confirmed + Completed). */
@@ -16,6 +16,17 @@ export interface RevenueSummary {
   upcomingCount: number;
   /** Won bookings with no value entered yet — they're counted as ₹0 above. */
   missingValueCount: number;
+  /** Of completed commission: actually paid to us, vs. still owed. */
+  receivedCommission: number;
+  owedCommission: number;
+  owedCount: number;
+  /** Owed on shoots booked off-platform — we only know about them if the studio tells us. */
+  owedOffPlatformCount: number;
+  /** Live leads (New, In progress, Follow up): what they'd be worth if they all booked. */
+  pipelineValue: number;
+  pipelineCommission: number;
+  pipelineEstimatedCount: number;
+  pipelineUnestimatedCount: number;
 }
 
 /**
@@ -32,6 +43,12 @@ export async function getRevenueSummary(tenantId: string): Promise<RevenueSummar
       { projection: { status: 1, booking: 1 } }
     )
     .toArray();
+  const live = await enquiries
+    .find(
+      { tenantId, status: { $in: ["new_lead", "in_progress", "on_hold"] } },
+      { projection: { shortlist: 1, "brief.budgetMin": 1, "brief.budgetMax": 1 } }
+    )
+    .toArray();
 
   const summary: RevenueSummary = {
     bookedValue: 0,
@@ -43,6 +60,14 @@ export async function getRevenueSummary(tenantId: string): Promise<RevenueSummar
     upcomingCommission: 0,
     upcomingCount: 0,
     missingValueCount: 0,
+    receivedCommission: 0,
+    owedCommission: 0,
+    owedCount: 0,
+    owedOffPlatformCount: 0,
+    pipelineValue: 0,
+    pipelineCommission: 0,
+    pipelineEstimatedCount: 0,
+    pipelineUnestimatedCount: 0,
   };
 
   for (const e of won) {
@@ -55,10 +80,28 @@ export async function getRevenueSummary(tenantId: string): Promise<RevenueSummar
       summary.completedValue += gross;
       summary.completedCommission += commission;
       summary.completedCount++;
+      if (e.booking?.commissionReceivedAt) {
+        summary.receivedCommission += commission;
+      } else {
+        summary.owedCommission += commission;
+        summary.owedCount++;
+        if (!e.booking?.platformBookingId) summary.owedOffPlatformCount++;
+      }
     } else {
       summary.upcomingValue += gross;
       summary.upcomingCommission += commission;
       summary.upcomingCount++;
+    }
+  }
+
+  for (const e of live) {
+    const value = estimatedValue(e);
+    if (value) {
+      summary.pipelineValue += value;
+      summary.pipelineCommission += commissionFor({ grossValue: value });
+      summary.pipelineEstimatedCount++;
+    } else {
+      summary.pipelineUnestimatedCount++;
     }
   }
   return summary;

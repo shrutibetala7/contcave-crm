@@ -74,19 +74,44 @@ export const SHORTLIST_OUTCOMES = [
 ] as const;
 export type ShortlistOutcome = (typeof SHORTLIST_OUTCOMES)[number];
 
+/**
+ * Why a lead was lost — or parked (Dormant), which asks for the same reason
+ * so dead leads can't hide behind a free-text "next action". The order is
+ * the order the dropdown shows: most common first.
+ */
 export const LOSS_REASONS = [
   "price",
+  "gst",
+  "no_response",
+  "project_cancelled",
+  "no_studio_in_city",
+  "chose_competitor",
+  "went_direct",
   "availability",
   "studio_declined",
-  "went_direct",
-  "chose_competitor",
-  "project_cancelled",
-  "no_response",
   "budget_too_low",
   "out_of_scope",
+  "not_followed_up",
   "other",
 ] as const;
 export type LossReason = (typeof LOSS_REASONS)[number];
+
+export const LOSS_REASON_LABELS: Record<LossReason, string> = {
+  price: "Price",
+  gst: "Didn't want to pay GST",
+  no_response: "Ghosted / no reply",
+  project_cancelled: "Shoot cancelled",
+  no_studio_in_city: "No studio in their city",
+  chose_competitor: "Went with a competitor",
+  went_direct: "Booked the studio directly",
+  availability: "Studio not available",
+  studio_declined: "Studio declined",
+  budget_too_low: "Budget too low",
+  out_of_scope: "Not something we do",
+  // Set by the 14-day auto-park — the lead went cold on our side, not theirs.
+  not_followed_up: "We didn't follow up",
+  other: "Other",
+};
 
 /** Why an enquiry was marked Cancelled — distinct from Lost's commercial reasons. */
 export const CANCEL_REASONS = [

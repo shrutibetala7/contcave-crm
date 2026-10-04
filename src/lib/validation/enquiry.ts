@@ -122,6 +122,10 @@ export const bookingSchema = z.object({
   grossValue: z.number().nullable().optional(),
   commissionValue: z.number().nullable().optional(),
   currency: z.literal("INR").default("INR"),
+  // Until these are set, commission is expected, not collected — and off-
+  // platform bookings depend on the studio being honest about the shoot.
+  commissionInvoicedAt: z.coerce.date().nullable().optional(),
+  commissionReceivedAt: z.coerce.date().nullable().optional(),
 });
 export type Booking = z.infer<typeof bookingSchema>;
 

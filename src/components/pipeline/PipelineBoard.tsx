@@ -10,6 +10,7 @@ import {
   CANCEL_REASON_LABELS,
   ENQUIRY_STATUS_LABELS,
   LOSS_REASONS,
+  LOSS_REASON_LABELS,
   type EnquiryStatus,
 } from "@/lib/enums";
 import { PIPELINE_COLUMNS, moveInto, type ColumnKey, type ColumnMove } from "@/lib/pipelineColumns";
@@ -20,16 +21,14 @@ import { PipelineCard } from "@/components/pipeline/PipelineCard";
 
 const MIN_REASON = 8;
 const CLOSED_PREVIEW = 6;
-const humanise = (s: string) => {
-  const t = s.replace(/_/g, " ");
-  return t.charAt(0).toUpperCase() + t.slice(1);
-};
+/** Parking a lead: check back in a month unless told otherwise. */
+const PARK_REVISIT_DAYS = 30;
 const COLUMN_TITLE = Object.fromEntries(PIPELINE_COLUMNS.map((c) => [c.key, c.title])) as Record<ColumnKey, string>;
 
 /** A move that needs an answer first (when to chase / how it ended), shown inside the card. */
 interface Pending {
   id: string;
-  move: Extract<ColumnMove, { kind: "follow_up" | "close" }>;
+  move: Extract<ColumnMove, { kind: "follow_up" | "park" | "close" }>;
   /** Just changing the follow-up date — the card stays where it is. */
   rescheduleOnly: boolean;
 }
@@ -47,6 +46,8 @@ export function PipelineBoard({ columns }: { columns: PipelineColumnData[] }) {
   const [overColumn, setOverColumn] = useState<ColumnKey | null>(null);
 
   const [showAllClosed, setShowAllClosed] = useState(false);
+  // Parked leads are mostly dead — out of the way unless asked for (or being dragged to).
+  const [showParked, setShowParked] = useState(false);
 
   const allCards = columns.flatMap((c) => c.cards);
   const byId = new Map(allCards.map((c) => [c.id, c]));
@@ -82,6 +83,7 @@ export function PipelineBoard({ columns }: { columns: PipelineColumnData[] }) {
     if (m.kind !== "direct") {
       place(card.id, column);
       setPending({ id: card.id, move: m, rescheduleOnly: false });
+      if (m.kind === "park") setShowParked(true);
       return;
     }
     place(card.id, column);
@@ -127,12 +129,13 @@ export function PipelineBoard({ columns }: { columns: PipelineColumnData[] }) {
     // Closed is history, not work — keep it short unless asked.
     const hidden = def.key === "closed" && !showAllClosed ? Math.max(0, count - CLOSED_PREVIEW) : 0;
     if (hidden) cards = cards.slice(0, CLOSED_PREVIEW);
-    return { def, cards, count, hidden, totalLabel: server.totalLabel };
+    const collapsed = def.key === "parked" && !showParked && !cards.some((c) => c.id === pending?.id);
+    return { def, cards, count, hidden, collapsed, totalLabel: server.totalLabel };
   });
 
   return (
     <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 lg:mx-0 lg:snap-none lg:overflow-visible lg:px-0">
-      {view.map(({ def, cards, count, hidden, totalLabel }) => {
+      {view.map(({ def, cards, count, hidden, collapsed, totalLabel }) => {
         const droppable = dragCard ? canDrop(def.key) : false;
         const isOver = overColumn === def.key && droppable;
         return (
@@ -154,16 +157,36 @@ export function PipelineBoard({ columns }: { columns: PipelineColumnData[] }) {
               onDragEnd();
               if (card && droppable) void move(card, def.key);
             }}
-            className={`flex w-[82vw] max-w-[19rem] shrink-0 snap-start flex-col rounded-xl p-2 transition-[background-color,box-shadow,opacity] duration-150 lg:w-auto lg:min-w-0 lg:max-w-none lg:flex-1 ${
+            className={`flex shrink-0 snap-start flex-col rounded-xl p-2 transition-[background-color,box-shadow,opacity] duration-150 ${
+              collapsed ? "w-auto lg:flex-none" : "w-[82vw] max-w-[19rem] lg:w-auto lg:min-w-0 lg:max-w-none lg:flex-1"
+            } ${
               isOver ? "bg-neutral-200/70 ring-2 ring-neutral-900/25" : "bg-neutral-100/80"
             } ${dragCard && !droppable && dragCard.column !== def.key ? "opacity-45" : ""}`}
           >
+            {collapsed ? (
+              <button
+                type="button"
+                id={`col-${def.key}`}
+                onClick={() => setShowParked(true)}
+                aria-expanded={false}
+                title={def.hint}
+                className="flex h-full min-h-24 flex-col items-center gap-2 rounded-lg px-1.5 py-1 text-sm font-semibold text-neutral-700 hover:bg-neutral-200/60 lg:[writing-mode:vertical-rl]"
+              >
+                {def.title} <span className="font-normal tabular-nums text-neutral-500">{count}</span>
+              </button>
+            ) : (
+            <>
             <header className="px-1.5 pb-2 pt-1">
               <div className="flex items-baseline justify-between gap-2">
                 <h2 id={`col-${def.key}`} className="text-sm font-semibold text-neutral-900">
                   {def.title} <span className="ml-0.5 font-normal tabular-nums text-neutral-500">{count}</span>
                 </h2>
                 {totalLabel && <span className="text-xs font-medium tabular-nums text-neutral-600">{totalLabel}</span>}
+                {def.key === "parked" && (
+                  <button type="button" onClick={() => setShowParked(false)} className="link-quiet text-xs" aria-expanded>
+                    Hide
+                  </button>
+                )}
               </div>
               <p className="text-xs text-neutral-500">{def.hint}</p>
             </header>
@@ -239,6 +262,8 @@ export function PipelineBoard({ columns }: { columns: PipelineColumnData[] }) {
                 </li>
               )}
             </ul>
+            </>
+            )}
           </section>
         );
       })}
@@ -256,13 +281,14 @@ function CardMenu({
   onReschedule: () => void;
 }) {
   const targets = PIPELINE_COLUMNS.map((c) => c.key).filter((k) => moveInto(k, card.status));
+  const label = (k: ColumnKey) => (k === "confirmed" ? "Book a studio" : k === "parked" ? "Park it" : COLUMN_TITLE[k]);
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-neutral-500">Move to</p>
       <div className="flex flex-wrap gap-1.5">
         {targets.map((k) => (
           <button key={k} type="button" onClick={() => onMove(k)} className="btn-secondary btn-sm">
-            {k === "confirmed" ? "Book a studio" : COLUMN_TITLE[k]}
+            {label(k)}
           </button>
         ))}
       </div>
@@ -273,8 +299,8 @@ function CardMenu({
   );
 }
 
-function tomorrowKey(): string {
-  return dayKey(new Date(Date.now() + 86_400_000));
+function daysAheadKey(days: number): string {
+  return dayKey(new Date(Date.now() + days * 86_400_000));
 }
 
 function PendingForm({
@@ -294,7 +320,10 @@ function PendingForm({
 }) {
   const closeOptions = pending.move.kind === "close" ? pending.move.options : [];
   // Keep an existing follow-up date unless it has already passed; otherwise suggest tomorrow.
-  const [date, setDate] = useState(card.follow && card.follow.tone !== "overdue" ? card.follow.date : tomorrowKey());
+  const kind = pending.move.kind;
+  const [date, setDate] = useState(
+    kind === "park" ? daysAheadKey(PARK_REVISIT_DAYS) : card.follow && card.follow.tone !== "overdue" ? card.follow.date : daysAheadKey(1)
+  );
   const [reason, setReason] = useState(card.follow?.reason ?? "");
   const [outcome, setOutcome] = useState<EnquiryStatus | "">(closeOptions.length === 1 ? closeOptions[0] : "");
   const [why, setWhy] = useState("");
@@ -304,9 +333,12 @@ function PendingForm({
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (pending.move.kind === "follow_up") {
+    if (kind === "follow_up") {
       if (!date) return setError("Pick a date.");
       if (reason.trim().length < MIN_REASON) return setError(`Say why in a few words (at least ${MIN_REASON} characters).`);
+    } else if (kind === "park") {
+      if (!why) return setError("Choose why it's being parked.");
+      if (!date) return setError("Pick when to look at it again.");
     } else {
       if (!outcome) return setError("Choose how it ended.");
       if (outcome !== "completed" && !why) return setError("Choose a reason.");
@@ -315,8 +347,16 @@ function PendingForm({
 
     onBusy(true);
     try {
-      if (pending.move.kind === "follow_up") {
-        if (!pending.rescheduleOnly && card.status !== "on_hold" && card.status !== "dormant") {
+      if (kind === "park") {
+        await api.post(`/api/enquiries/${card.id}/status`, {
+          to: "dormant",
+          lossReason: why,
+          lossNote: note.trim() || null,
+          nextActionDate: new Date(`${date}T00:00:00.000Z`).toISOString(),
+          nextActionReason: note.trim().length >= MIN_REASON ? note.trim() : null,
+        });
+      } else if (kind === "follow_up") {
+        if (!pending.rescheduleOnly && card.status !== "on_hold") {
           await api.post(`/api/enquiries/${card.id}/status`, { to: "on_hold" });
         }
         await api.patch(`/api/enquiries/${card.id}`, {
@@ -343,7 +383,24 @@ function PendingForm({
 
   return (
     <form onSubmit={submit} className="space-y-2">
-      {pending.move.kind === "follow_up" ? (
+      {kind === "park" ? (
+        <>
+          <p className="text-xs font-medium text-neutral-700">Park it — why is it going quiet?</p>
+          <select aria-label="Why is it being parked" value={why} onChange={(e) => setWhy(e.target.value)} autoFocus className="input py-1 text-xs">
+            <option value="">Choose a reason…</option>
+            {LOSS_REASONS.filter((r) => r !== "not_followed_up").map((r) => (
+              <option key={r} value={r}>
+                {LOSS_REASON_LABELS[r]}
+              </option>
+            ))}
+          </select>
+          <label className="block text-xs text-neutral-600">
+            Look again on
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input mt-1 py-1 text-xs" />
+          </label>
+          <input aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" className="input py-1 text-xs" />
+        </>
+      ) : kind === "follow_up" ? (
         <>
           <p className="text-xs font-medium text-neutral-700">{pending.rescheduleOnly ? "Follow up on" : "Move to Follow up — chase on"}</p>
           <input
@@ -386,9 +443,9 @@ function PendingForm({
           {outcome === "lost" && (
             <select aria-label="Why was it lost" value={why} onChange={(e) => setWhy(e.target.value)} className="input py-1 text-xs">
               <option value="">Why was it lost?</option>
-              {LOSS_REASONS.map((r) => (
+              {LOSS_REASONS.filter((r) => r !== "not_followed_up").map((r) => (
                 <option key={r} value={r}>
-                  {humanise(r)}
+                  {LOSS_REASON_LABELS[r]}
                 </option>
               ))}
             </select>

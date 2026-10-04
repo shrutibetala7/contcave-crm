@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ContactLinks } from "@/components/ContactLinks";
 import { enquiryDisplayName } from "@/lib/enquiryDisplayName";
+import { formatShortDay } from "@/lib/businessDay";
 import type { EnquiryDoc } from "@/types/models";
 import type { ContactMongo } from "@/lib/db/collections";
 
@@ -20,6 +21,15 @@ function NextAction({ date, reason }: { date: Date | string | null | undefined; 
       )}
     </div>
   );
+}
+
+/** "12 Oct" / "12 – 14 Oct" — the date the studio has to be free, which is what everything hangs on. */
+function shootDates(dates: (Date | string)[]): string | null {
+  if (!dates.length) return null;
+  const sorted = dates.map((d) => new Date(d)).sort((a, b) => a.getTime() - b.getTime());
+  const first = formatShortDay(sorted[0]);
+  const last = formatShortDay(sorted[sorted.length - 1]);
+  return first === last ? first : `${first} – ${last}`;
 }
 
 export function EnquiryTable({
@@ -73,6 +83,7 @@ export function EnquiryTable({
       company: company === e.code ? null : company,
       showCode: name !== e.code,
       brief: [e.brief.shootType, e.brief.city].filter(Boolean).join(" · "),
+      shoot: shootDates(e.brief.preferredDates),
       owner: e.ownerId ? userById.get(e.ownerId) : undefined,
     };
   });
@@ -81,7 +92,7 @@ export function EnquiryTable({
     <>
       {/* Phones: one stacked card per enquiry instead of a 720px-wide table. */}
       <ul className="card divide-y divide-neutral-100 sm:hidden">
-        {rows.map(({ e, contact, name, company, showCode, brief }) => (
+        {rows.map(({ e, contact, name, company, showCode, brief, shoot }) => (
           <li key={e.id} className="relative px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -93,7 +104,13 @@ export function EnquiryTable({
               </div>
               <StatusBadge status={e.status} />
             </div>
-            {brief && <p className="mt-1 text-xs capitalize text-neutral-600">{brief}</p>}
+            {(brief || shoot) && (
+              <p className="mt-1 text-xs text-neutral-600">
+                <span className="capitalize">{brief}</span>
+                {brief && shoot && " · "}
+                {shoot && <span className="tabular-nums">Shoot {shoot}</span>}
+              </p>
+            )}
             <div className="mt-2 flex items-end justify-between gap-3 text-sm">
               <NextAction date={e.nextActionDate} reason={e.nextActionReason} />
               <span className="relative z-10">
@@ -111,13 +128,14 @@ export function EnquiryTable({
               <th scope="col" className="px-4 py-2 font-medium">Enquiry</th>
               <th scope="col" className="px-4 py-2 font-medium">Status</th>
               <th scope="col" className="px-4 py-2 font-medium">Brief</th>
+              <th scope="col" className="px-4 py-2 font-medium">Shoot</th>
               <th scope="col" className="px-4 py-2 font-medium">Next action</th>
               <th scope="col" className="px-4 py-2 font-medium">Owner</th>
               <th scope="col" className="px-4 py-2"><span className="sr-only">Chat</span></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ e, contact, name, company, showCode, brief, owner }) => (
+            {rows.map(({ e, contact, name, company, showCode, brief, shoot, owner }) => (
               <tr key={e.id} className="relative border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50">
                 <td className="px-4 py-2.5">
                   <Link href={`/enquiries/${e.id}`} className="font-medium text-neutral-900 after:absolute after:inset-0 hover:underline">
@@ -130,6 +148,7 @@ export function EnquiryTable({
                   <StatusBadge status={e.status} />
                 </td>
                 <td className="px-4 py-2.5 capitalize text-neutral-600">{brief || <span className="text-neutral-500">—</span>}</td>
+                <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-neutral-700">{shoot ?? <span className="text-neutral-500">—</span>}</td>
                 <td className="px-4 py-2.5">
                   <NextAction date={e.nextActionDate} reason={e.nextActionReason} />
                 </td>

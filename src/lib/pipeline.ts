@@ -1,11 +1,13 @@
 import { ObjectId } from "mongodb";
 import { enquiriesCol, contactsCol, brandsCol, type EnquiryMongo } from "@/lib/db/collections";
 import { listUsers } from "@/lib/users";
-import { CANCEL_REASON_LABELS, type EnquiryStatus } from "@/lib/enums";
+import { CANCEL_REASON_LABELS, LOSS_REASON_LABELS, type EnquiryStatus } from "@/lib/enums";
 import { enquiryDisplayName } from "@/lib/enquiryDisplayName";
 import { dayKey, daysFromToday, formatShortDay, formatWeekday } from "@/lib/businessDay";
-import { formatINR } from "@/lib/money";
-import { PIPELINE_COLUMNS, columnFor, type ColumnKey } from "@/lib/pipelineColumns";
+import { estimatedValue, formatINR } from "@/lib/money";
+import { LIVE_COLUMNS, PIPELINE_COLUMNS, columnFor, type ColumnKey } from "@/lib/pipelineColumns";
+import { BACKFILL_CUTOFF } from "@/lib/backfill";
+import { arrivedAt, isAwaitingReplyTooLong, isUnreachable } from "@/lib/leadHygiene";
 
 export type DueTone = "overdue" | "today" | "soon" | "later";
 
@@ -23,18 +25,22 @@ export interface PipelineCard {
   shootLabel: string | null;
   /** Booking value, on won bookings. */
   valueLabel: string | null;
+  /** "~₹40,000" — what an open lead is likely worth (quote or budget). */
+  estimateLabel: string | null;
   /** `date` is YYYY-MM-DD in India time, for prefilling a date input. */
   follow: { label: string; tone: DueTone; reason: string | null; date: string } | null;
   /** On an open card with nothing scheduled — the gap to fill. */
   needsFollowUpDate: boolean;
   /** "Came in today" / "Came in 3d ago" — for new leads, how long they've waited. */
   ageLabel: string | null;
+  /** A new lead still without a first reply past the response-time target. */
+  replyOverdue: boolean;
   /** Closed cards: "Completed", "Lost · Price". */
   outcomeLabel: string | null;
   ownerName: string | null;
   phone: string | null;
   instagramHandle: string | null;
-  /** Follow-up is today or overdue. */
+  /** Follow-up is today or overdue (live columns only — parked revisits don't count). */
   isDue: boolean;
 }
 
@@ -83,7 +89,8 @@ function shootLabel(dates: Date[]): string | null {
 
 function outcomeLabel(e: EnquiryMongo): string | null {
   if (e.status === "completed") return "Completed";
-  if (e.status === "lost") return e.outcome?.lossReason ? `Lost · ${humanise(e.outcome.lossReason)}` : "Lost";
+  if (e.status === "lost") return e.outcome?.lossReason ? `Lost · ${LOSS_REASON_LABELS[e.outcome.lossReason]}` : "Lost";
+  if (e.status === "dormant") return e.outcome?.lossReason ? LOSS_REASON_LABELS[e.outcome.lossReason] : null;
   if (e.status === "cancelled") {
     const reason = e.outcome?.cancelReason;
     return reason ? `Cancelled · ${reason === "other" ? e.outcome?.cancelNote || "Other" : CANCEL_REASON_LABELS[reason]}` : "Cancelled";
@@ -94,6 +101,11 @@ function outcomeLabel(e: EnquiryMongo): string | null {
 export async function getPipeline(tenantId: string, options: { ownerId?: string } = {}) {
   const now = new Date();
   const closedSince = new Date(now.getTime() - CLOSED_WINDOW_DAYS * 86_400_000);
+  // Backfilled records carry the backfill day as their closedAt, which would
+  // put months-old enquiries in "last 30 days" — so a closing date before the
+  // cutoff is never trusted. Completed shoots go by their shoot date instead;
+  // backfilled lost/cancelled ones by when the enquiry came in.
+  const trustedSince = new Date(Math.max(closedSince.getTime(), BACKFILL_CUTOFF.getTime()));
   const owner = options.ownerId ? { ownerId: options.ownerId } : {};
 
   const enquiries = await enquiriesCol();
@@ -103,9 +115,13 @@ export async function getPipeline(tenantId: string, options: { ownerId?: string 
       ...owner,
       $or: [
         { status: { $in: ["new_lead", "in_progress", "on_hold", "dormant", "confirmed"] } },
+        { status: "completed", "brief.preferredDates": { $elemMatch: { $gte: closedSince } } },
+        { status: "completed", "brief.preferredDates.0": { $exists: false }, "outcome.closedAt": { $gte: trustedSince } },
+        { status: { $in: ["lost", "cancelled"] }, "outcome.closedAt": { $gte: trustedSince } },
         {
-          status: { $in: ["completed", "lost", "cancelled"] },
-          $or: [{ "outcome.closedAt": { $gte: closedSince } }, { "outcome.closedAt": null, updatedAt: { $gte: closedSince } }],
+          status: { $in: ["lost", "cancelled"] },
+          "outcome.closedAt": { $lt: BACKFILL_CUTOFF },
+          $or: [{ enquiryDate: { $gte: closedSince } }, { enquiryDate: null, createdAt: { $gte: closedSince } }],
         },
       ],
     })
@@ -141,9 +157,11 @@ export async function getPipeline(tenantId: string, options: { ownerId?: string 
     });
     const column = columnFor(e.status);
     const open = column !== "closed";
+    const live = LIVE_COLUMNS.includes(column);
     const follow = open ? nextFollowUp(e) : null;
     const followDays = follow ? daysFromToday(follow.date, now) : null;
-    const enquiryDate = new Date(e.enquiryDate ?? e.createdAt);
+    const enquiryDate = arrivedAt(e);
+    const estimate = live && column !== "confirmed" ? estimatedValue(e) : null;
     const ageDays = -daysFromToday(enquiryDate, now);
     const shootDates = (e.brief?.preferredDates ?? []).map((d) => new Date(d));
     const won = e.status === "confirmed" || e.status === "completed";
@@ -158,22 +176,31 @@ export async function getPipeline(tenantId: string, options: { ownerId?: string 
       detail: [e.brief?.shootType ? humanise(e.brief.shootType) : null, e.brief?.city].filter(Boolean).join(" · ") || null,
       shootLabel: shootLabel(shootDates),
       valueLabel: won && e.booking?.grossValue ? formatINR(e.booking.grossValue) : null,
+      estimateLabel: estimate ? `~${formatINR(estimate)}` : null,
       follow:
         follow && followDays != null
-          ? { ...followLabel(followDays, follow.date), reason: follow.reason, date: dayKey(follow.date) }
+          ? column === "parked"
+            ? // A revisit date, not a chase: never shouted about as overdue.
+              { label: followDays <= 0 ? "Revisit now" : `Revisit ${formatShortDay(follow.date)}`, tone: followDays <= 0 ? "soon" : "later", reason: follow.reason, date: dayKey(follow.date) }
+            : { ...followLabel(followDays, follow.date), reason: follow.reason, date: dayKey(follow.date) }
           : null,
-      // Confirmed bookings run to their shoot date; everything else open should have a next step.
-      needsFollowUpDate: open && !follow && column !== "confirmed" && column !== "new",
+      // Confirmed bookings run to their shoot date; everything else live should have a next step.
+      needsFollowUpDate: live && !follow && column !== "confirmed" && column !== "new",
       ageLabel: column === "new" ? (ageDays <= 0 ? "Came in today" : `Came in ${ageDays}d ago`) : null,
+      replyOverdue: isAwaitingReplyTooLong(e, now),
       outcomeLabel: outcomeLabel(e),
       ownerName: e.ownerId ? userById.get(e.ownerId) ?? null : null,
       phone: contact?.whatsappNumber ?? contact?.phone ?? null,
       instagramHandle: contact?.instagramHandle ?? null,
-      isDue: followDays != null && followDays <= 0,
+      isDue: live && followDays != null && followDays <= 0,
     };
-    const closedAt = new Date(e.outcome?.closedAt ?? e.updatedAt).getTime();
     const firstShoot = shootDates.length ? Math.min(...shootDates.map((d) => d.getTime())) : Infinity;
-    return { card, followAt: follow?.date.getTime() ?? Infinity, enquiryAt: enquiryDate.getTime(), closedAt, firstShoot, gross: won ? e.booking?.grossValue ?? 0 : 0 };
+    const lastShoot = shootDates.length ? Math.max(...shootDates.map((d) => d.getTime())) : null;
+    const closedAt = e.status === "completed" && lastShoot != null ? lastShoot : new Date(e.outcome?.closedAt ?? e.updatedAt).getTime();
+    // Nobody can work a lead with no phone and no Instagram — it waits in a
+    // holding queue above the board until someone fills in who it is.
+    const holding = live && column !== "confirmed" && isUnreachable(contact);
+    return { card, holding, followAt: follow?.date.getTime() ?? Infinity, enquiryAt: enquiryDate.getTime(), closedAt, firstShoot, gross: won ? e.booking?.grossValue ?? 0 : 0 };
   });
 
   type Row = (typeof rows)[number];
@@ -186,10 +213,12 @@ export async function getPipeline(tenantId: string, options: { ownerId?: string 
     follow_up: byFollowThenNewest,
     confirmed: (a, b) => a.firstShoot - b.firstShoot || b.enquiryAt - a.enquiryAt,
     closed: (a, b) => b.closedAt - a.closedAt,
+    parked: byFollowThenNewest,
   };
 
+  const onBoard = rows.filter((r) => !r.holding);
   const columns: PipelineColumnData[] = PIPELINE_COLUMNS.map((col) => {
-    const inColumn = rows.filter((r) => r.card.column === col.key).sort(ORDER[col.key]);
+    const inColumn = onBoard.filter((r) => r.card.column === col.key).sort(ORDER[col.key]);
     const total = inColumn.reduce((sum, r) => sum + r.gross, 0);
     return {
       key: col.key,
@@ -198,14 +227,20 @@ export async function getPipeline(tenantId: string, options: { ownerId?: string 
     };
   });
 
-  const open = rows.filter((r) => r.card.column !== "closed").map((r) => r.card);
+  const open = onBoard.filter((r) => LIVE_COLUMNS.includes(r.card.column)).map((r) => r.card);
+  const holding = rows
+    .filter((r) => r.holding)
+    .sort((a, b) => b.enquiryAt - a.enquiryAt)
+    .map((r) => r.card);
   return {
     columns,
+    holding,
     users,
     counts: {
       open: open.length,
       overdue: open.filter((c) => c.follow?.tone === "overdue").length,
       dueToday: open.filter((c) => c.follow?.tone === "today").length,
+      awaitingReply: open.filter((c) => c.replyOverdue).length,
     },
   };
 }

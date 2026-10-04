@@ -11,6 +11,9 @@ import { completeFinishedShoots } from "@/lib/completeFinishedShoots";
 import { enquiryDisplayName } from "@/lib/enquiryDisplayName";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ContactLinks } from "@/components/ContactLinks";
+import { PhoneNumber } from "@/components/PhoneNumber";
+import { LOSS_REASON_LABELS } from "@/lib/enums";
+import { BACKFILL_LABEL, isBackfilled } from "@/lib/backfill";
 import { NextActionPanel } from "@/components/NextActionPanel";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { BriefPanel } from "@/components/enquiries/BriefPanel";
@@ -93,6 +96,12 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             </>
           )}
           <span className="tabular-nums">{enquiry.code}</span>
+          {contact?.phone && (
+            <>
+              <span aria-hidden>·</span>
+              <PhoneNumber phone={contact.phone} />
+            </>
+          )}
           {contact && (
             <>
               <span aria-hidden>·</span>
@@ -100,6 +109,12 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             </>
           )}
         </div>
+        {isBackfilled(enquiry.createdAt) && (
+          <p className="mt-2 text-xs text-neutral-500">
+            Entered in the {BACKFILL_LABEL} backfill — the status dates in its history are when it was typed in, not when
+            things happened.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -136,7 +151,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               <h3 className="card-title mb-1">Outcome</h3>
               <p className="capitalize text-neutral-800">{enquiry.outcome.result}</p>
               {enquiry.outcome.lossReason && (
-                <p className="text-xs text-neutral-500">Reason: {enquiry.outcome.lossReason.replace(/_/g, " ")}</p>
+                <p className="text-xs text-neutral-500">Reason: {LOSS_REASON_LABELS[enquiry.outcome.lossReason]}</p>
               )}
               {enquiry.outcome.lossNote && <p className="text-xs text-neutral-500">{enquiry.outcome.lossNote}</p>}
               {enquiry.outcome.cancelReason && (

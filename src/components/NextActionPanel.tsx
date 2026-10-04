@@ -73,7 +73,7 @@ export function NextActionPanel({
           {nextActionDate ? (
             <p className="font-medium text-neutral-800">{format(new Date(nextActionDate), "d MMM yyyy")}</p>
           ) : (
-            <p className="text-neutral-600">Nothing scheduled. Add the next step and it will show up on Today.</p>
+            <p className="text-neutral-600">Nothing scheduled. Add the next step and it will show up on the Pipeline board.</p>
           )}
           {nextActionDate &&
             (nextActionReason ? (

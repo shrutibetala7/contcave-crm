@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { Icon, type IconName } from "@/components/Icon";
 import { api, ApiError } from "@/lib/apiClient";
+import { BACKFILL_LABEL, isBackfilled } from "@/lib/backfill";
 import type { ActivityDoc, ActivityEntityType } from "@/types/models";
 
 const TYPE_ICON: Record<string, { icon: IconName; label: string }> = {
@@ -81,7 +82,12 @@ export function ActivityTimeline({
                     : a.body || a.type}
                 </p>
                 {a.type === "status_change" && a.body && <p className="text-xs text-neutral-500">{a.body}</p>}
-                <p className="text-xs tabular-nums text-neutral-500">{format(new Date(a.occurredAt), "d MMM, HH:mm")}</p>
+                <p className="text-xs tabular-nums text-neutral-500">
+                  {format(new Date(a.occurredAt), "d MMM, HH:mm")}
+                  {a.type === "status_change" && isBackfilled(a.occurredAt) && (
+                    <span title={`Entered in the ${BACKFILL_LABEL} backfill — not when it actually happened`}> · backfilled</span>
+                  )}
+                </p>
               </div>
             </li>
           ))}

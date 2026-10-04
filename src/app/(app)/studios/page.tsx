@@ -5,6 +5,8 @@ import { serializeAll } from "@/lib/db/serialize";
 import { StudiosFilters } from "@/components/studios/StudiosFilters";
 import { StudioTable } from "@/components/studios/StudioTable";
 import { NewStudioButton } from "@/components/studios/NewStudioButton";
+import { DemandVsSupply } from "@/components/studios/DemandVsSupply";
+import { getDemandBySupply, getStudioBookingStats } from "@/lib/studioDemand";
 import { parseSortParam } from "@/lib/listQuery";
 import type { StudioStage } from "@/lib/enums";
 
@@ -29,7 +31,11 @@ export default async function StudiosPage({
   const sort = parseSortParam(sp.sort, SORTABLE_FIELDS, { nextActionDate: 1, name: 1 });
 
   const studios = await studiosCol();
-  const docs = await studios.find(filter).sort(sort).limit(200).toArray();
+  const [docs, bookingStats, demand] = await Promise.all([
+    studios.find(filter).sort(sort).limit(200).toArray(),
+    getStudioBookingStats(session.tenantId),
+    hasFilters ? Promise.resolve([]) : getDemandBySupply(session.tenantId),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -42,8 +48,9 @@ export default async function StudiosPage({
         </div>
         <NewStudioButton />
       </div>
+      <DemandVsSupply rows={demand} />
       <StudiosFilters />
-      <StudioTable studios={serializeAll(docs)} hasFilters={hasFilters} />
+      <StudioTable studios={serializeAll(docs)} bookingStats={bookingStats} hasFilters={hasFilters} />
     </div>
   );
 }

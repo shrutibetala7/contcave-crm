@@ -206,6 +206,7 @@ export function StudiosAndBooking({
             </div>
           </dl>
           {status === "confirmed" && <p className="mt-2 text-xs text-neutral-600">Moves to Completed by itself after the shoot date.</p>}
+          {booking.grossValue ? <CommissionStatus enquiryId={enquiryId} booking={booking} completed={status === "completed"} /> : null}
           {bookingFor === chosen.id && (
             <BookForm
               enquiryId={enquiryId}
@@ -359,5 +360,77 @@ function BookForm({
         {!alreadyBooked && <span className="text-xs text-neutral-500">Marks the enquiry Confirmed and the lead a customer.</span>}
       </div>
     </form>
+  );
+}
+
+/**
+ * Commission is only money once it's paid. Booked off-platform, we depend on
+ * the studio to tell us the shoot happened — so after the shoot this nags
+ * until someone marks it invoiced, then received.
+ */
+function CommissionStatus({ enquiryId, booking, completed }: { enquiryId: string; booking: Booking; completed: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const invoiced = booking.commissionInvoicedAt;
+  const received = booking.commissionReceivedAt;
+
+  async function set(patch: { commissionInvoicedAt?: string | null; commissionReceivedAt?: string | null }) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.patch(`/api/enquiries/${enquiryId}`, { booking: patch });
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Couldn't save that.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  const today = () => fromKey(dayKey(new Date()));
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-green-200 pt-2 text-xs">
+      <span className="font-medium text-neutral-700">Commission:</span>
+      {received ? (
+        <>
+          <span className="text-green-800">Received {formatShortDay(received)}</span>
+          <button type="button" disabled={busy} onClick={() => set({ commissionReceivedAt: null })} className="link-quiet">
+            Undo
+          </button>
+        </>
+      ) : invoiced ? (
+        <>
+          <span className="text-neutral-700">Invoiced {formatShortDay(invoiced)}, not paid yet</span>
+          <button type="button" disabled={busy} onClick={() => set({ commissionReceivedAt: today() })} className="btn-secondary btn-sm">
+            Mark received
+          </button>
+          <button type="button" disabled={busy} onClick={() => set({ commissionInvoicedAt: null })} className="link-quiet">
+            Undo
+          </button>
+        </>
+      ) : (
+        <>
+          <span className={completed ? "font-medium text-amber-800" : "text-neutral-600"}>
+            {completed
+              ? booking.platformBookingId
+                ? "Not invoiced yet"
+                : "Not invoiced yet — booked off-platform, so check the studio has been paid"
+              : "Invoice after the shoot"}
+          </span>
+          <button type="button" disabled={busy} onClick={() => set({ commissionInvoicedAt: today() })} className="btn-secondary btn-sm">
+            Mark invoiced
+          </button>
+          <button type="button" disabled={busy} onClick={() => set({ commissionInvoicedAt: today(), commissionReceivedAt: today() })} className="link-quiet">
+            Already paid
+          </button>
+        </>
+      )}
+      {error && (
+        <p role="alert" className="w-full text-red-700">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

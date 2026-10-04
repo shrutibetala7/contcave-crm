@@ -9,6 +9,7 @@ import { EnquiryTable } from "@/components/enquiries/EnquiryTable";
 import { parseSortParam } from "@/lib/listQuery";
 import { buildEnquirySortPipeline } from "@/lib/enquirySort";
 import { completeFinishedShoots } from "@/lib/completeFinishedShoots";
+import { autoParkStaleLeads } from "@/lib/leadHygiene";
 import { todayAsUtcMidnight } from "@/lib/businessDay";
 import type { EnquiryStatus, EnquirySource } from "@/lib/enums";
 
@@ -42,6 +43,7 @@ export default async function EnquiriesPage({
 
   // Confirmed bookings whose shoot date has passed become Completed before we list them.
   await completeFinishedShoots(session.tenantId);
+  await autoParkStaleLeads(session.tenantId);
 
   const enquiries = await enquiriesCol();
 

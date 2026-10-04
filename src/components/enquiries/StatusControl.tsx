@@ -3,13 +3,20 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/apiClient";
-import { CANCEL_REASONS, CANCEL_REASON_LABELS, ENQUIRY_STATUSES, ENQUIRY_STATUS_LABELS, LOSS_REASONS, type EnquiryStatus } from "@/lib/enums";
+import {
+  CANCEL_REASONS,
+  CANCEL_REASON_LABELS,
+  ENQUIRY_STATUSES,
+  ENQUIRY_STATUS_LABELS,
+  LOSS_REASONS,
+  LOSS_REASON_LABELS,
+  type EnquiryStatus,
+} from "@/lib/enums";
 import { celebrate } from "@/lib/celebrate";
 import { allowedNextStatuses } from "@/lib/stateMachine/enquiryStatus";
 
-const label = (s: string) => s.replace(/_/g, " ");
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const lossLabel = (s: string) => cap(label(s));
+// "We didn't follow up" is only ever set by the 14-day auto-park.
+const PICKABLE_LOSS_REASONS = LOSS_REASONS.filter((r) => r !== "not_followed_up");
 
 /**
  * The status is one dropdown, listing only the statuses this enquiry can
@@ -142,20 +149,20 @@ export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string;
             </>
           )}
 
-          {pending === "lost" && (
+          {(pending === "lost" || pending === "dormant") && (
             <>
               <label className="block text-xs text-neutral-600">
-                Why was it lost?
+                {pending === "lost" ? "Why was it lost?" : "Why is it being parked?"}
                 <select value={lossReason} onChange={(e) => setLossReason(e.target.value)} className="input mt-1">
                   <option value="">Choose a reason…</option>
-                  {LOSS_REASONS.map((r) => (
+                  {PICKABLE_LOSS_REASONS.map((r) => (
                     <option key={r} value={r}>
-                      {lossLabel(r)}
+                      {LOSS_REASON_LABELS[r]}
                     </option>
                   ))}
                 </select>
               </label>
-              {lossReason === "chose_competitor" && (
+              {pending === "lost" && lossReason === "chose_competitor" && (
                 <label className="block text-xs text-neutral-600">
                   Which competitor?
                   <input value={competitorName} onChange={(e) => setCompetitorName(e.target.value)} className="input mt-1" />
@@ -175,7 +182,7 @@ export function StatusControl({ enquiryId, currentStatus }: { enquiryId: string;
                 <input type="date" value={nextActionDate} onChange={(e) => setNextActionDate(e.target.value)} className="input mt-1" />
               </label>
               <label className="block text-xs text-neutral-600">
-                Why is it parked? (at least 8 characters)
+                What to check then <span className="text-neutral-500">(optional)</span>
                 <input value={nextActionReason} onChange={(e) => setNextActionReason(e.target.value)} className="input mt-1" />
               </label>
             </>

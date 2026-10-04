@@ -17,3 +17,20 @@ const inr = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 export function formatINR(amount: number): string {
   return `₹${inr.format(amount)}`;
 }
+
+/**
+ * What an open enquiry is likely worth, before anything is booked: the
+ * chosen studio's quote, else the highest quote still in play, else the
+ * client's stated budget. Null when there's nothing to go on.
+ */
+export function estimatedValue(e: {
+  shortlist?: { outcome?: string | null; quotedAmount?: number | null }[] | null;
+  brief?: { budgetMin?: number | null; budgetMax?: number | null } | null;
+}): number | null {
+  const quotes = (e.shortlist ?? []).filter((s) => s.quotedAmount != null && s.quotedAmount > 0);
+  const picked = quotes.find((s) => s.outcome === "picked");
+  if (picked) return picked.quotedAmount!;
+  const live = quotes.filter((s) => s.outcome === "pending" || s.outcome == null);
+  if (live.length) return Math.max(...live.map((s) => s.quotedAmount!));
+  return e.brief?.budgetMax || e.brief?.budgetMin || null;
+}

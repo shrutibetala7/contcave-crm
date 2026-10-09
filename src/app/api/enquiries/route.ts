@@ -6,7 +6,8 @@ import { serialize, serializeAll } from "@/lib/db/serialize";
 import { handleRoute, parseJson } from "@/lib/api/respond";
 import { nextEnquiryCode } from "@/lib/codes";
 import { enquiryCreateSchema } from "@/lib/validation/enquiry";
-import { ENQUIRY_STATUSES } from "@/lib/enums";
+import { getWorkflowSettings } from "@/lib/settings";
+import { arrivedAt } from "@/lib/leadHygiene";
 import { toObjectId } from "@/lib/db/objectId";
 import { BadRequestError } from "@/lib/api/errors";
 
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
     const [docs, total] = await Promise.all([
       enquiries
         .find(filter)
-        .sort({ nextActionDate: 1, createdAt: -1 })
+        .sort({ "followUp.dueAt": 1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .toArray(),
@@ -92,6 +93,11 @@ export async function POST(request: NextRequest) {
 
     const now = new Date();
     const code = await nextEnquiryCode(now);
+    const settings = await getWorkflowSettings(session.tenantId);
+    // Every open lead has a next step from the moment it exists: the first reply.
+    const firstReplyDue = new Date(
+      arrivedAt({ enquiryDate: input.enquiryDate, createdAt: now }).getTime() + settings.firstReplyHours * 3_600_000
+    );
 
     const enquiries = await enquiriesCol();
     const doc: Omit<EnquiryMongo, "_id"> = {
@@ -103,7 +109,7 @@ export async function POST(request: NextRequest) {
       source: input.source,
       sourceDetail: input.sourceDetail ?? null,
       brief: input.brief,
-      status: ENQUIRY_STATUSES[0], // "new_lead"
+      status: "new",
       shortlist: [],
       outcome: {
         result: null,
@@ -128,8 +134,11 @@ export async function POST(request: NextRequest) {
       feedback: {},
       enquiryDate: input.enquiryDate,
       ownerId: input.ownerId ?? session.sub,
-      nextActionDate: input.nextActionDate ?? null,
-      nextActionReason: input.nextActionReason ?? null,
+      followUp: { kind: "first_reply", label: "Send the first reply", dueAt: firstReplyDue, allDay: false, createdAt: now, createdBy: session.sub },
+      noReplyCount: 0,
+      noReplyStartedAt: null,
+      lastActivityAt: now,
+      lastActivityId: null,
       lastContactedAt: null,
       firstResponseAt: null,
       createdAt: now,

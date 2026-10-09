@@ -8,6 +8,9 @@ import { estimatedValue, formatINR } from "@/lib/money";
 import { LIVE_COLUMNS, PIPELINE_COLUMNS, columnFor, type ColumnKey } from "@/lib/pipelineColumns";
 import { BACKFILL_CUTOFF } from "@/lib/backfill";
 import { arrivedAt, isAwaitingReplyTooLong, isUnreachable } from "@/lib/leadHygiene";
+import { getWorkflowSettings } from "@/lib/settings";
+import type { FollowUp } from "@/lib/validation/enquiry";
+import type { LogTarget } from "@/lib/workflow";
 
 export type DueTone = "overdue" | "today" | "soon" | "later";
 
@@ -27,10 +30,12 @@ export interface PipelineCard {
   valueLabel: string | null;
   /** "~₹40,000" — what an open lead is likely worth (quote or budget). */
   estimateLabel: string | null;
-  /** `date` is YYYY-MM-DD in India time, for prefilling a date input. */
-  follow: { label: string; tone: DueTone; reason: string | null; date: string } | null;
-  /** On an open card with nothing scheduled — the gap to fill. */
+  /** The one open follow-up. `date` is YYYY-MM-DD in India time, for prefilling a date input. */
+  follow: { label: string; tone: DueTone; reason: string | null; date: string; kind: FollowUp["kind"] } | null;
+  /** An open card with no follow-up — shouldn't exist (the API refuses it), flagged if old data has one. */
   needsFollowUpDate: boolean;
+  /** No-replies logged in a row, e.g. 2 — shown as "2 of 3" so ops know parking is close. */
+  noReplyCount: number;
   /** "Came in today" / "Came in 3d ago" — for new leads, how long they've waited. */
   ageLabel: string | null;
   /** A new lead still without a first reply past the response-time target. */
@@ -40,8 +45,10 @@ export interface PipelineCard {
   ownerName: string | null;
   phone: string | null;
   instagramHandle: string | null;
-  /** Follow-up is today or overdue (live columns only — parked revisits don't count). */
+  /** Follow-up is today or overdue (live columns only). */
   isDue: boolean;
+  /** For the Log update sheet. */
+  log: LogTarget;
 }
 
 export interface PipelineColumnData {
@@ -65,15 +72,17 @@ function followLabel(days: number, date: Date): { label: string; tone: DueTone }
   return { label: formatShortDay(date), tone: "later" };
 }
 
-/** The next time someone should chase this: the earlier of the next action and any open delay follow-up. */
-function nextFollowUp(e: EnquiryMongo): { date: Date; reason: string | null } | null {
-  const candidates: { date: Date; reason: string | null }[] = [];
-  if (e.nextActionDate) candidates.push({ date: new Date(e.nextActionDate), reason: e.nextActionReason ?? null });
-  for (const d of e.schedule?.delayEvents ?? []) {
-    if (!d.resolved && d.followUpOn) candidates.push({ date: new Date(d.followUpOn), reason: d.followUpReason ?? null });
+/**
+ * How urgent a follow-up is. All-day ones go overdue the day after; timed
+ * ones (first reply, options check) the moment they pass — "Overdue 3h".
+ */
+export function followTone(f: Pick<FollowUp, "dueAt" | "allDay">, now: Date): { label: string; tone: DueTone } {
+  const due = new Date(f.dueAt);
+  if (!f.allDay && due < now) {
+    const hours = Math.floor((now.getTime() - due.getTime()) / 3_600_000);
+    return hours < 24 ? { label: `Overdue ${Math.max(hours, 1)}h`, tone: "overdue" } : { label: `Overdue ${Math.floor(hours / 24)}d`, tone: "overdue" };
   }
-  candidates.sort((a, b) => a.date.getTime() - b.date.getTime());
-  return candidates[0] ?? null;
+  return followLabel(daysFromToday(due, now), due);
 }
 
 function shootLabel(dates: Date[]): string | null {
@@ -88,9 +97,9 @@ function shootLabel(dates: Date[]): string | null {
 }
 
 function outcomeLabel(e: EnquiryMongo): string | null {
-  if (e.status === "completed") return "Completed";
+  if (e.status === "done") return "Done";
   if (e.status === "lost") return e.outcome?.lossReason ? `Lost · ${LOSS_REASON_LABELS[e.outcome.lossReason]}` : "Lost";
-  if (e.status === "dormant") return e.outcome?.lossReason ? LOSS_REASON_LABELS[e.outcome.lossReason] : null;
+  if (e.status === "parked") return e.outcome?.lossReason ? LOSS_REASON_LABELS[e.outcome.lossReason] : null;
   if (e.status === "cancelled") {
     const reason = e.outcome?.cancelReason;
     return reason ? `Cancelled · ${reason === "other" ? e.outcome?.cancelNote || "Other" : CANCEL_REASON_LABELS[reason]}` : "Cancelled";
@@ -109,14 +118,15 @@ export async function getPipeline(tenantId: string, options: { ownerId?: string 
   const owner = options.ownerId ? { ownerId: options.ownerId } : {};
 
   const enquiries = await enquiriesCol();
+  const settings = await getWorkflowSettings(tenantId);
   const docs = await enquiries
     .find({
       tenantId,
       ...owner,
       $or: [
-        { status: { $in: ["new_lead", "in_progress", "on_hold", "dormant", "confirmed"] } },
-        { status: "completed", "brief.preferredDates": { $elemMatch: { $gte: closedSince } } },
-        { status: "completed", "brief.preferredDates.0": { $exists: false }, "outcome.closedAt": { $gte: trustedSince } },
+        { status: { $in: ["new", "talking", "options_sent", "confirmed", "parked"] } },
+        { status: "done", "brief.preferredDates": { $elemMatch: { $gte: closedSince } } },
+        { status: "done", "brief.preferredDates.0": { $exists: false }, "outcome.closedAt": { $gte: trustedSince } },
         { status: { $in: ["lost", "cancelled"] }, "outcome.closedAt": { $gte: trustedSince } },
         {
           status: { $in: ["lost", "cancelled"] },
@@ -156,15 +166,14 @@ export async function getPipeline(tenantId: string, options: { ownerId?: string 
       query: e.brief?.rawText,
     });
     const column = columnFor(e.status);
-    const open = column !== "closed";
     const live = LIVE_COLUMNS.includes(column);
-    const follow = open ? nextFollowUp(e) : null;
-    const followDays = follow ? daysFromToday(follow.date, now) : null;
+    const follow = e.followUp ?? null;
+    const tone = follow ? followTone(follow, now) : null;
     const enquiryDate = arrivedAt(e);
     const estimate = live && column !== "confirmed" ? estimatedValue(e) : null;
     const ageDays = -daysFromToday(enquiryDate, now);
     const shootDates = (e.brief?.preferredDates ?? []).map((d) => new Date(d));
-    const won = e.status === "confirmed" || e.status === "completed";
+    const won = e.status === "confirmed" || e.status === "done";
 
     const card: PipelineCard = {
       id: e._id.toHexString(),
@@ -177,30 +186,34 @@ export async function getPipeline(tenantId: string, options: { ownerId?: string 
       shootLabel: shootLabel(shootDates),
       valueLabel: won && e.booking?.grossValue ? formatINR(e.booking.grossValue) : null,
       estimateLabel: estimate ? `~${formatINR(estimate)}` : null,
-      follow:
-        follow && followDays != null
-          ? column === "parked"
-            ? // A revisit date, not a chase: never shouted about as overdue.
-              { label: followDays <= 0 ? "Revisit now" : `Revisit ${formatShortDay(follow.date)}`, tone: followDays <= 0 ? "soon" : "later", reason: follow.reason, date: dayKey(follow.date) }
-            : { ...followLabel(followDays, follow.date), reason: follow.reason, date: dayKey(follow.date) }
-          : null,
-      // Confirmed bookings run to their shoot date; everything else live should have a next step.
-      needsFollowUpDate: live && !follow && column !== "confirmed" && column !== "new",
+      follow: follow && tone ? { ...tone, reason: follow.label, date: dayKey(follow.dueAt), kind: follow.kind } : null,
+      needsFollowUpDate: live && !follow,
+      noReplyCount: e.noReplyCount ?? 0,
       ageLabel: column === "new" ? (ageDays <= 0 ? "Came in today" : `Came in ${ageDays}d ago`) : null,
-      replyOverdue: isAwaitingReplyTooLong(e, now),
+      replyOverdue: isAwaitingReplyTooLong(e, settings.firstReplyHours, now),
       outcomeLabel: outcomeLabel(e),
       ownerName: e.ownerId ? userById.get(e.ownerId) ?? null : null,
       phone: contact?.whatsappNumber ?? contact?.phone ?? null,
       instagramHandle: contact?.instagramHandle ?? null,
-      isDue: live && followDays != null && followDays <= 0,
+      isDue: live && (tone?.tone === "overdue" || tone?.tone === "today"),
+      log: {
+        id: e._id.toHexString(),
+        title,
+        status: e.status,
+        noReplyCount: e.noReplyCount ?? 0,
+        noReplyStartedAt: e.noReplyStartedAt ? new Date(e.noReplyStartedAt).toISOString() : null,
+        firstResponseAt: e.firstResponseAt ? new Date(e.firstResponseAt).toISOString() : null,
+        reachable: !isUnreachable(contact),
+        preferredDates: shootDates.map((d) => d.toISOString()),
+      },
     };
     const firstShoot = shootDates.length ? Math.min(...shootDates.map((d) => d.getTime())) : Infinity;
     const lastShoot = shootDates.length ? Math.max(...shootDates.map((d) => d.getTime())) : null;
-    const closedAt = e.status === "completed" && lastShoot != null ? lastShoot : new Date(e.outcome?.closedAt ?? e.updatedAt).getTime();
+    const closedAt = e.status === "done" && lastShoot != null ? lastShoot : new Date(e.outcome?.closedAt ?? e.updatedAt).getTime();
     // Nobody can work a lead with no phone and no Instagram — it waits in a
     // holding queue above the board until someone fills in who it is.
     const holding = live && column !== "confirmed" && isUnreachable(contact);
-    return { card, holding, followAt: follow?.date.getTime() ?? Infinity, enquiryAt: enquiryDate.getTime(), closedAt, firstShoot, gross: won ? e.booking?.grossValue ?? 0 : 0 };
+    return { card, holding, followAt: follow ? new Date(follow.dueAt).getTime() : Infinity, enquiryAt: enquiryDate.getTime(), closedAt, firstShoot, gross: won ? e.booking?.grossValue ?? 0 : 0 };
   });
 
   type Row = (typeof rows)[number];
@@ -209,8 +222,8 @@ export async function getPipeline(tenantId: string, options: { ownerId?: string 
   const byFollowThenNewest = (a: Row, b: Row) => a.followAt - b.followAt || b.enquiryAt - a.enquiryAt;
   const ORDER: Record<ColumnKey, (a: Row, b: Row) => number> = {
     new: byFollowThenNewest,
-    in_progress: byFollowThenNewest,
-    follow_up: byFollowThenNewest,
+    talking: byFollowThenNewest,
+    options_sent: byFollowThenNewest,
     confirmed: (a, b) => a.firstShoot - b.firstShoot || b.enquiryAt - a.enquiryAt,
     closed: (a, b) => b.closedAt - a.closedAt,
     parked: byFollowThenNewest,

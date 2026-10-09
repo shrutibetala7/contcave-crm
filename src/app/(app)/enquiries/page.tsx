@@ -9,13 +9,12 @@ import { EnquiryTable } from "@/components/enquiries/EnquiryTable";
 import { parseSortParam } from "@/lib/listQuery";
 import { buildEnquirySortPipeline } from "@/lib/enquirySort";
 import { completeFinishedShoots } from "@/lib/completeFinishedShoots";
-import { autoParkStaleLeads } from "@/lib/leadHygiene";
 import { todayAsUtcMidnight } from "@/lib/businessDay";
 import type { EnquiryStatus, EnquirySource } from "@/lib/enums";
 
 export const metadata: Metadata = { title: "Enquiries" };
 
-const SORTABLE_FIELDS = ["nextActionDate", "createdAt", "code"] as const;
+const SORTABLE_FIELDS = ["followUp.dueAt", "createdAt", "code"] as const;
 const LIMIT = 100;
 
 export default async function EnquiriesPage({
@@ -43,7 +42,6 @@ export default async function EnquiriesPage({
 
   // Confirmed bookings whose shoot date has passed become Completed before we list them.
   await completeFinishedShoots(session.tenantId);
-  await autoParkStaleLeads(session.tenantId);
 
   const enquiries = await enquiriesCol();
 
@@ -57,7 +55,7 @@ export default async function EnquiriesPage({
       .aggregate<EnquiryMongo>(buildEnquirySortPipeline(filter, LIMIT, todayAsUtcMidnight()))
       .toArray();
   } else {
-    const sort = parseSortParam(sp.sort, SORTABLE_FIELDS, { nextActionDate: 1, createdAt: -1 });
+    const sort = parseSortParam(sp.sort, SORTABLE_FIELDS, { "followUp.dueAt": 1, createdAt: -1 });
     docs = await enquiries.find(filter).sort(sort).limit(LIMIT).toArray();
   }
   const list = serializeAll(docs);

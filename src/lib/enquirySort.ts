@@ -11,7 +11,7 @@ import type { EnquiryMongo } from "@/lib/db/collections";
  *   1. No shoot date yet. Newest enquiry on top (enquiry date, falling back
  *      to `createdAt` on pre-migration records), so a fresh lead surfaces
  *      above one that's been sitting untouched.
- *   0. Done: Completed / Cancelled / Lost, or a shoot date already behind
+ *   0. Closed: Done / Cancelled / Lost / Parked, or a shoot date already behind
  *      us. Most recent on top, so old history sinks instead of crowding out
  *      live enquiries.
  *
@@ -39,7 +39,7 @@ export function buildEnquirySortPipeline(filter: Filter<EnquiryMongo>, limit: nu
         _tier: {
           $switch: {
             branches: [
-              { case: { $in: ["$status", ["completed", "cancelled", "lost"]] }, then: 0 },
+              { case: { $in: ["$status", ["done", "cancelled", "lost", "parked"]] }, then: 0 },
               { case: { $and: [{ $ne: ["$_shootEnd", null] }, { $lt: ["$_shootEnd", today] }] }, then: 0 },
               { case: { $eq: ["$_shootStart", null] }, then: 1 },
             ],

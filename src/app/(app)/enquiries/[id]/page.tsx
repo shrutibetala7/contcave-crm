@@ -12,12 +12,17 @@ import { enquiryDisplayName } from "@/lib/enquiryDisplayName";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ContactLinks } from "@/components/ContactLinks";
 import { PhoneNumber } from "@/components/PhoneNumber";
-import { LOSS_REASON_LABELS } from "@/lib/enums";
+import { CANCEL_REASON_LABELS, LOSS_REASON_LABELS, isOpenStatus } from "@/lib/enums";
 import { BACKFILL_LABEL, isBackfilled } from "@/lib/backfill";
-import { NextActionPanel } from "@/components/NextActionPanel";
+import { LogUpdateButton } from "@/components/workflow/LogUpdateButton";
+import { FollowUpCard } from "@/components/workflow/FollowUpCard";
+import { OwnerPicker } from "@/components/workflow/OwnerPicker";
+import { OverrideStage } from "@/components/workflow/OverrideStage";
+import { getWorkflowSettings } from "@/lib/settings";
+import { followTone } from "@/lib/pipeline";
+import { isUnreachable } from "@/lib/leadHygiene";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { BriefPanel } from "@/components/enquiries/BriefPanel";
-import { StatusControl } from "@/components/enquiries/StatusControl";
 import { StudiosAndBooking } from "@/components/enquiries/StudiosAndBooking";
 import { DelayLog } from "@/components/enquiries/DelayLog";
 import { FeedbackPanel } from "@/components/enquiries/FeedbackPanel";
@@ -38,7 +43,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
 
   const enquiry = serialize(doc);
 
-  const [brand, contact, activityDocs, studioDocs, users] = await Promise.all([
+  const [brand, contact, activityDocs, studioDocs, users, settings] = await Promise.all([
     doc.brandId
       ? (await brandsCol()).findOne({ _id: new ObjectId(doc.brandId), tenantId: session.tenantId })
       : null,
@@ -52,6 +57,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       .toArray(),
     (await studiosCol()).find({ tenantId: session.tenantId }).limit(300).toArray(),
     listUsers(session.tenantId),
+    getWorkflowSettings(session.tenantId),
   ]);
 
   const activities = serializeAll(activityDocs);
@@ -71,7 +77,9 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   // each once it applies, or whenever it already holds something.
   const hasBooking = enquiry.shortlist.some((s) => s.outcome === "picked");
   const showDelayLog = hasBooking || enquiry.schedule.delayEvents.length > 0;
-  const showFeedback = enquiry.status === "completed" || Boolean(enquiry.feedback.client || enquiry.feedback.studio);
+  const showFeedback = enquiry.status === "done" || Boolean(enquiry.feedback.client || enquiry.feedback.studio);
+  const canLog = isOpenStatus(enquiry.status) || enquiry.status === "parked";
+  const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null);
 
   return (
     <div className="space-y-6 pb-10">
@@ -79,7 +87,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         <Link href="/enquiries" className="link-quiet -ml-1 inline-flex items-center gap-1 rounded px-1 py-1 text-xs">
           <Icon name="left" className="size-3.5" /> Enquiries
         </Link>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-xl font-semibold tracking-tight text-neutral-900">{heading}</h1>
           <StatusBadge status={enquiry.status} />
           {contact?.isCustomer && (
@@ -87,6 +95,24 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               Customer
             </span>
           )}
+          <div className="ml-auto flex items-center gap-2">
+            {canLog && (
+              <LogUpdateButton
+                target={{
+                  id: enquiry.id,
+                  title: heading,
+                  status: enquiry.status,
+                  noReplyCount: enquiry.noReplyCount ?? 0,
+                  noReplyStartedAt: iso(enquiry.noReplyStartedAt),
+                  firstResponseAt: iso(enquiry.firstResponseAt),
+                  reachable: !isUnreachable(contact),
+                  preferredDates: enquiry.brief.preferredDates.map((d) => new Date(d).toISOString()),
+                }}
+                settings={settings}
+              />
+            )}
+            {session.role === "admin" && <OverrideStage enquiryId={enquiry.id} currentStatus={enquiry.status} />}
+          </div>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-neutral-500">
           {subheading && subheading !== enquiry.code && (
@@ -108,6 +134,8 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               <ContactLinks phone={contact.whatsappNumber ?? contact.phone} instagramHandle={contact.instagramHandle} />
             </>
           )}
+          <span aria-hidden>·</span>
+          <OwnerPicker enquiryId={enquiry.id} ownerId={enquiry.ownerId ?? null} users={users} />
         </div>
         {isBackfilled(enquiry.createdAt) && (
           <p className="mt-2 text-xs text-neutral-500">
@@ -137,25 +165,24 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
           <ActivityTimeline entityType="enquiry" entityId={enquiry.id} activities={toClientSafe(activities)} />
         </div>
         <div className="order-first space-y-4 lg:order-none">
-          <StatusControl enquiryId={enquiry.id} currentStatus={enquiry.status} />
-          <NextActionPanel
-            entityUrl={`/api/enquiries/${enquiry.id}`}
-            ownerId={enquiry.ownerId ?? null}
-            nextActionDate={enquiry.nextActionDate ? new Date(enquiry.nextActionDate).toISOString() : null}
-            nextActionReason={enquiry.nextActionReason ?? null}
-            users={users}
+          <FollowUpCard
+            enquiryId={enquiry.id}
+            status={enquiry.status}
+            followUp={enquiry.followUp ? { ...enquiry.followUp, dueAt: new Date(enquiry.followUp.dueAt).toISOString() } : null}
+            tone={enquiry.followUp ? followTone(enquiry.followUp, new Date()) : null}
+            ownerName={users.find((u) => u.id === enquiry.ownerId)?.name ?? null}
           />
           {/* A won booking is summarised in Studios & booking; this is for how it ended otherwise. */}
           {enquiry.outcome.result && enquiry.outcome.result !== "won" && (
             <div className="card p-4 text-sm">
               <h3 className="card-title mb-1">Outcome</h3>
-              <p className="capitalize text-neutral-800">{enquiry.outcome.result}</p>
+              <p className="capitalize text-neutral-800">{enquiry.outcome.result === "dormant" ? "Parked" : enquiry.outcome.result}</p>
               {enquiry.outcome.lossReason && (
                 <p className="text-xs text-neutral-500">Reason: {LOSS_REASON_LABELS[enquiry.outcome.lossReason]}</p>
               )}
               {enquiry.outcome.lossNote && <p className="text-xs text-neutral-500">{enquiry.outcome.lossNote}</p>}
               {enquiry.outcome.cancelReason && (
-                <p className="text-xs text-neutral-500">Reason: {enquiry.outcome.cancelReason.replace(/_/g, " ")}</p>
+                <p className="text-xs text-neutral-500">Reason: {CANCEL_REASON_LABELS[enquiry.outcome.cancelReason]}</p>
               )}
               {enquiry.outcome.cancelNote && <p className="text-xs text-neutral-500">{enquiry.outcome.cancelNote}</p>}
             </div>

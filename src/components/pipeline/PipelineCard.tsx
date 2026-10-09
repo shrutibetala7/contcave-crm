@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { DragEvent, ReactNode } from "react";
+import type { DragEvent } from "react";
 import { Icon } from "@/components/Icon";
 import { instagramProfileUrl } from "@/lib/instagram";
 import { whatsappLink } from "@/lib/whatsapp";
@@ -15,7 +15,7 @@ const TONE: Record<DueTone, string> = {
   later: `${CHIP} bg-white text-neutral-600 ring-neutral-200`,
 };
 const OUTCOME_TONE: Record<string, string> = {
-  completed: `${CHIP} bg-teal-50 text-teal-800 ring-teal-200`,
+  done: `${CHIP} bg-green-50 text-green-800 ring-green-200`,
   lost: `${CHIP} bg-white text-red-700 ring-red-200`,
   cancelled: `${CHIP} bg-white text-orange-800 ring-orange-200`,
 };
@@ -33,28 +33,20 @@ export function PipelineCard({
   card,
   draggable,
   dragging,
-  busy,
   onDragStart,
   onDragEnd,
-  onToggleMenu,
-  onSetFollowUp,
-  menuOpen,
+  onLogUpdate,
   showOwner,
-  children,
 }: {
   card: Card;
-  onSetFollowUp: () => void;
   /** Off when one person owns everything on the board — the badge would say nothing. */
   showOwner: boolean;
   draggable: boolean;
   dragging: boolean;
-  busy: boolean;
   onDragStart: (e: DragEvent) => void;
   onDragEnd: () => void;
-  onToggleMenu: () => void;
-  menuOpen: boolean;
-  /** The move menu, a follow-up/close form, or an error — rendered inside the card. */
-  children?: ReactNode;
+  /** Opens the Log update sheet (Revive, on a parked card). Null on closed cards. */
+  onLogUpdate: (() => void) | null;
 }) {
   const closed = card.column === "closed";
   return (
@@ -62,10 +54,9 @@ export function PipelineCard({
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      aria-busy={busy || undefined}
       className={`group relative rounded-lg border bg-white p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,opacity,box-shadow] duration-150 ${
         closed ? "border-neutral-200 bg-neutral-50/60" : "border-neutral-200 hover:border-neutral-300 hover:shadow-[0_2px_6px_rgba(0,0,0,0.06)]"
-      } ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${dragging ? "opacity-40" : ""} ${busy ? "opacity-60" : ""}`}
+      } ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${dragging ? "opacity-40" : ""}`}
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
@@ -81,15 +72,15 @@ export function PipelineCard({
           </Link>
           {card.subtitle && <p className="truncate text-xs text-neutral-500">{card.subtitle}</p>}
         </div>
-        {!closed && (
+        {onLogUpdate && (
           <button
             type="button"
-            onClick={onToggleMenu}
-            aria-expanded={menuOpen}
-            aria-label={`Actions for ${card.title}`}
-            className="relative z-10 -mr-1 -mt-1 rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+            onClick={onLogUpdate}
+            aria-label={`${card.status === "parked" ? "Revive" : "Log update for"} ${card.title}`}
+            title={card.status === "parked" ? "Revive" : "Log update"}
+            className="relative z-10 -mr-1 -mt-1 rounded px-1.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
           >
-            <Icon name="more" className="size-4" />
+            {card.status === "parked" ? "Revive" : "Log"}
           </button>
         )}
       </div>
@@ -120,15 +111,20 @@ export function PipelineCard({
               {card.follow.label}
             </span>
           )}
-          {card.needsFollowUpDate && (
+          {card.needsFollowUpDate && onLogUpdate && (
             <button
               type="button"
-              onClick={onSetFollowUp}
+              onClick={onLogUpdate}
               className={`${CHIP} relative z-10 whitespace-nowrap bg-amber-50 text-amber-800 ring-amber-200 transition-colors hover:bg-amber-100`}
             >
               <Icon name="plus" className="size-3" />
-              Follow-up date
+              No follow-up
             </button>
+          )}
+          {card.noReplyCount > 0 && (
+            <span className="text-xs text-neutral-500" title="No-replies logged in a row">
+              {card.noReplyCount} no-repl{card.noReplyCount === 1 ? "y" : "ies"}
+            </span>
           )}
           {card.ageLabel &&
             (card.replyOverdue ? (
@@ -185,7 +181,6 @@ export function PipelineCard({
         </p>
       )}
 
-      {children && <div className="relative z-10 mt-3 border-t border-neutral-100 pt-3">{children}</div>}
     </li>
   );
 }

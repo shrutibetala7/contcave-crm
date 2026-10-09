@@ -50,8 +50,8 @@ async function main() {
 async function ensureIndexes(db: import("mongodb").Db) {
   console.log("Ensuring indexes…");
   await db.collection("enquiries").createIndexes([
-    { key: { tenantId: 1, status: 1, nextActionDate: 1 }, name: "tenant_status_nextAction" },
-    { key: { tenantId: 1, ownerId: 1, nextActionDate: 1 }, name: "tenant_owner_nextAction" },
+    { key: { tenantId: 1, status: 1, "followUp.dueAt": 1 }, name: "tenant_status_followUp" },
+    { key: { tenantId: 1, ownerId: 1, "followUp.dueAt": 1 }, name: "tenant_owner_followUp" },
     { key: { tenantId: 1, "schedule.currentShootDate": 1 }, name: "tenant_shootDate" },
     {
       key: { tenantId: 1, "schedule.delayEvents.followUpOn": 1 },
@@ -225,7 +225,7 @@ async function seedDemoData(db: import("mongodb").Db, userIds: Record<string, Ob
       budgetMax: 80000,
       requirements: ["cyclorama", "natural light"],
     },
-    status: "in_progress",
+    status: "options_sent",
     shortlist: [
       {
         id: new ObjectId().toHexString(),
@@ -244,8 +244,18 @@ async function seedDemoData(db: import("mongodb").Db, userIds: Record<string, Ob
     feedback: {},
     ownerId,
     enquiryDate: now,
-    nextActionDate: tomorrow,
-    nextActionReason: "Follow up on studio quote — check if they've confirmed the shoot date",
+    followUp: {
+      kind: "options_check",
+      label: "Check which studio they like",
+      dueAt: tomorrow,
+      allDay: true,
+      createdAt: now,
+      createdBy: "seed",
+    },
+    noReplyCount: 0,
+    noReplyStartedAt: null,
+    lastActivityAt: now,
+    lastActivityId: null,
     lastContactedAt: now,
     firstResponseAt: now,
     createdAt: now,

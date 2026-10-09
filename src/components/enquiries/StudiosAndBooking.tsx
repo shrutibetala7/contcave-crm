@@ -56,8 +56,10 @@ export function StudiosAndBooking({
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const booked = status === "confirmed" || status === "completed";
-  const closed = status === "lost" || status === "cancelled";
+  const booked = status === "confirmed" || status === "done";
+  const closed = status === "lost" || status === "cancelled" || status === "parked";
+  const canSendOptions = !booked && !closed && shortlist.length > 0;
+  const [sending, setSending] = useState(false);
   const chosen = shortlist.find((s) => s.outcome === "picked") ?? null;
   const others = booked && chosen ? shortlist.filter((s) => s.id !== chosen.id) : shortlist;
   const areaById = new Map(studioOptions.map((s) => [s.id, s.area]));
@@ -180,7 +182,7 @@ export function StudiosAndBooking({
         <div className="mt-3 rounded-lg bg-green-50/70 p-3 ring-1 ring-inset ring-green-200">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-xs font-medium text-green-800">
-              {status === "completed" ? "Completed" : "Confirmed"} · {booking.platformBookingId ? `Platform booking ${booking.platformBookingId}` : "Booked off-platform"}
+              {status === "done" ? "Done" : "Confirmed"} · {booking.platformBookingId ? `Platform booking ${booking.platformBookingId}` : "Booked off-platform"}
             </p>
             {bookingFor !== chosen.id && (
               <button type="button" onClick={() => setBookingFor(chosen.id)} className="link-quiet text-xs">
@@ -205,8 +207,8 @@ export function StudiosAndBooking({
               </dd>
             </div>
           </dl>
-          {status === "confirmed" && <p className="mt-2 text-xs text-neutral-600">Moves to Completed by itself after the shoot date.</p>}
-          {booking.grossValue ? <CommissionStatus enquiryId={enquiryId} booking={booking} completed={status === "completed"} /> : null}
+          {status === "confirmed" && <p className="mt-2 text-xs text-neutral-600">Moves to Done by itself the morning after the shoot.</p>}
+          {booking.grossValue ? <CommissionStatus enquiryId={enquiryId} booking={booking} completed={status === "done"} /> : null}
           {bookingFor === chosen.id && (
             <BookForm
               enquiryId={enquiryId}
@@ -250,6 +252,23 @@ export function StudiosAndBooking({
             {adding ? "Adding…" : "Add studio"}
           </button>
         </form>
+      )}
+      {canSendOptions && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-neutral-100 pt-3">
+          <button
+            type="button"
+            disabled={sending}
+            onClick={async () => {
+              setSending(true);
+              await run(() => api.post(`/api/enquiries/${enquiryId}/options-sent`, {}), "Couldn't record that.");
+              setSending(false);
+            }}
+            className="btn-secondary btn-sm"
+          >
+            {sending ? "Saving…" : status === "options_sent" ? "More options sent" : "Options sent to client"}
+          </button>
+          <span className="text-xs text-neutral-500">Press once you&apos;ve messaged them — it moves to Options sent and sets a check-back.</span>
+        </div>
       )}
       {error && (
         <p role="alert" className="mt-2 text-xs text-red-700">

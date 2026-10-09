@@ -5,38 +5,102 @@
  */
 
 /**
- * The enquiry pipeline, simplified to eight statuses. Any non-terminal
- * status can move to any other (see stateMachine/enquiryStatus.ts) —
- * there's no forced march through sub-stages any more. Confirmed carries
- * the old "closed_won" meaning (the deal is done, the lead becomes a
- * customer) and moves on to Completed once the shoot has happened (that
- * happens by itself after the shoot date — see lib/completeFinishedShoots.ts);
- * Cancelled and Lost are both dead ends but for different reasons (an
- * operational reason — the shoot itself fell through — vs. a commercial
- * one — the deal was lost).
+ * The stage an enquiry is at. Nobody picks it by hand: it moves as a side
+ * effect of something ops did (logging an outcome, sending options, saving
+ * a booking) or of the calendar (the shoot date passing) — see
+ * lib/stateMachine/enquiryStatus.ts. Admins can override it, with a reason.
+ *
+ * Four stages are open (on the board, always with a next follow-up); the
+ * other four are closed. Parked is a lead that stopped replying — closed,
+ * but revivable. Cancelled is kept apart from Lost: a shoot that fell
+ * through is an operational reason, not a commercial loss.
+ *
+ * Stored on enquiries as `status` (the field predates the redesign).
  */
 export const ENQUIRY_STATUSES = [
-  "new_lead",
-  "in_progress",
+  "new",
+  "talking",
+  "options_sent",
   "confirmed",
-  "completed",
-  "on_hold",
-  "cancelled",
+  "done",
+  "parked",
   "lost",
-  "dormant",
+  "cancelled",
 ] as const;
 export type EnquiryStatus = (typeof ENQUIRY_STATUSES)[number];
 
 export const ENQUIRY_STATUS_LABELS: Record<EnquiryStatus, string> = {
-  new_lead: "New Lead",
-  in_progress: "In Progress",
+  new: "New",
+  talking: "Talking",
+  options_sent: "Options sent",
   confirmed: "Confirmed",
-  completed: "Completed",
-  on_hold: "On Hold",
-  cancelled: "Cancelled",
+  done: "Done",
+  parked: "Parked",
   lost: "Lost",
-  dormant: "Dormant",
+  cancelled: "Cancelled",
 };
+
+export const OPEN_STATUSES = ["new", "talking", "options_sent", "confirmed"] as const satisfies readonly EnquiryStatus[];
+export const CLOSED_STATUSES = ["done", "parked", "lost", "cancelled"] as const satisfies readonly EnquiryStatus[];
+
+export function isOpenStatus(status: EnquiryStatus): boolean {
+  return (OPEN_STATUSES as readonly EnquiryStatus[]).includes(status);
+}
+
+/**
+ * What ops record on Log update — one tap, at most one input each. Wants
+ * options and Chose a studio hand over to the studios / booking flow, which
+ * records its own activity when it completes.
+ */
+export const LOG_OUTCOMES = [
+  "no_reply",
+  "replied",
+  "postponed",
+  "wants_options",
+  "chose_studio",
+  "not_going_ahead",
+] as const;
+export type LogOutcome = (typeof LOG_OUTCOMES)[number];
+
+export const LOG_OUTCOME_LABELS: Record<LogOutcome, string> = {
+  no_reply: "No reply",
+  replied: "Replied, still deciding",
+  postponed: "Shoot postponed",
+  wants_options: "Wants options",
+  chose_studio: "Chose a studio",
+  not_going_ahead: "Not going ahead",
+};
+
+/** The fixed list Not going ahead offers. Shoot cancelled closes as Cancelled, the rest as Lost. */
+export const NOT_GOING_AHEAD_REASONS = [
+  "price",
+  "gst",
+  "chose_competitor",
+  "no_studio_in_city",
+  "shoot_cancelled",
+  "other",
+] as const;
+export type NotGoingAheadReason = (typeof NOT_GOING_AHEAD_REASONS)[number];
+
+export const NOT_GOING_AHEAD_LABELS: Record<NotGoingAheadReason, string> = {
+  price: "Price",
+  gst: "GST",
+  chose_competitor: "Went elsewhere",
+  no_studio_in_city: "No studio in city",
+  shoot_cancelled: "Shoot cancelled",
+  other: "Other",
+};
+
+/** What an enquiry's one open follow-up is for. */
+export const FOLLOW_UP_KINDS = [
+  "first_reply",
+  "chase",
+  "options_check",
+  "confirm_timings",
+  "send_feedback",
+  "collect_commission",
+] as const;
+export type FollowUpKind = (typeof FOLLOW_UP_KINDS)[number];
 
 export const ENQUIRY_SOURCES = [
   "instagram_dm",
@@ -102,13 +166,13 @@ export const LOSS_REASON_LABELS: Record<LossReason, string> = {
   no_response: "Ghosted / no reply",
   project_cancelled: "Shoot cancelled",
   no_studio_in_city: "No studio in their city",
-  chose_competitor: "Went with a competitor",
+  chose_competitor: "Went elsewhere",
   went_direct: "Booked the studio directly",
   availability: "Studio not available",
   studio_declined: "Studio declined",
   budget_too_low: "Budget too low",
   out_of_scope: "Not something we do",
-  // Set by the 14-day auto-park — the lead went cold on our side, not theirs.
+  // Kept for records parked under the old 14-day rule — the lead went cold on our side.
   not_followed_up: "We didn't follow up",
   other: "Other",
 };
@@ -223,6 +287,13 @@ export const ACTIVITY_TYPES = [
   "visit",
   "status_change",
   "system",
+  // The lead workflow: every one of these is written by an action that also
+  // moves the stage and/or the follow-up (lib/enquiryActions.ts).
+  "outcome",
+  "offer_sent",
+  "booking",
+  "stage_override",
+  "followup",
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 

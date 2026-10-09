@@ -7,18 +7,14 @@ import { formatShortDay } from "@/lib/businessDay";
 import type { EnquiryDoc } from "@/types/models";
 import type { ContactMongo } from "@/lib/db/collections";
 
-function NextAction({ date, reason }: { date: Date | string | null | undefined; reason: string | null | undefined }) {
-  if (!date) return <span className="text-neutral-500">—</span>;
+function NextFollowUp({ followUp }: { followUp: EnquiryDoc["followUp"] }) {
+  if (!followUp) return <span className="text-neutral-500">—</span>;
   return (
     <div className="min-w-0">
-      <p className="font-medium tabular-nums text-neutral-800">{format(new Date(date), "d MMM")}</p>
-      {reason ? (
-        <p className="max-w-[16rem] truncate text-xs text-neutral-500" title={reason}>
-          {reason}
-        </p>
-      ) : (
-        <p className="text-xs text-amber-800">No reason recorded</p>
-      )}
+      <p className="font-medium tabular-nums text-neutral-800">{format(new Date(followUp.dueAt), "d MMM")}</p>
+      <p className="max-w-[16rem] truncate text-xs text-neutral-500" title={followUp.label}>
+        {followUp.label}
+      </p>
     </div>
   );
 }
@@ -112,7 +108,7 @@ export function EnquiryTable({
               </p>
             )}
             <div className="mt-2 flex items-end justify-between gap-3 text-sm">
-              <NextAction date={e.nextActionDate} reason={e.nextActionReason} />
+              <NextFollowUp followUp={e.followUp} />
               <span className="relative z-10">
                 <ContactLinks phone={contact?.whatsappNumber ?? contact?.phone} instagramHandle={contact?.instagramHandle} compact />
               </span>
@@ -129,7 +125,7 @@ export function EnquiryTable({
               <th scope="col" className="px-4 py-2 font-medium">Status</th>
               <th scope="col" className="px-4 py-2 font-medium">Brief</th>
               <th scope="col" className="px-4 py-2 font-medium">Shoot</th>
-              <th scope="col" className="px-4 py-2 font-medium">Next action</th>
+              <th scope="col" className="px-4 py-2 font-medium">Next follow-up</th>
               <th scope="col" className="px-4 py-2 font-medium">Owner</th>
               <th scope="col" className="px-4 py-2"><span className="sr-only">Chat</span></th>
             </tr>
@@ -150,7 +146,7 @@ export function EnquiryTable({
                 <td className="px-4 py-2.5 capitalize text-neutral-600">{brief || <span className="text-neutral-500">—</span>}</td>
                 <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-neutral-700">{shoot ?? <span className="text-neutral-500">—</span>}</td>
                 <td className="px-4 py-2.5">
-                  <NextAction date={e.nextActionDate} reason={e.nextActionReason} />
+                  <NextFollowUp followUp={e.followUp} />
                 </td>
                 <td className="px-4 py-2.5 text-neutral-600">{owner ?? <span className="text-neutral-500">—</span>}</td>
                 <td className="px-4 py-2.5 text-right">

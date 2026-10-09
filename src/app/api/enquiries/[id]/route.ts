@@ -31,6 +31,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const _id = toObjectId(id);
 
     const set: Record<string, unknown> = { updatedAt: new Date(), updatedBy: session.sub };
+    // Commission paid closes the "collect commission" task, however it was marked.
+    if (input.booking?.commissionReceivedAt) {
+      const current = await enquiries.findOne({ _id, tenantId: session.tenantId }, { projection: { followUp: 1 } });
+      if (current?.followUp?.kind === "collect_commission") set.followUp = null;
+    }
     for (const [key, value] of Object.entries(input)) {
       if (value === undefined) continue;
       if (key === "brief" && value && typeof value === "object") {

@@ -15,7 +15,7 @@ export interface StudioBookingStats {
 export async function getStudioBookingStats(tenantId: string): Promise<Map<string, StudioBookingStats>> {
   const docs = await (await enquiriesCol())
     .find(
-      { tenantId, status: { $in: ["confirmed", "completed"] }, "booking.studioId": { $ne: null } },
+      { tenantId, status: { $in: ["confirmed", "done"] }, "booking.studioId": { $ne: null } },
       { projection: { "booking.studioId": 1, "brief.preferredDates": 1 } }
     )
     .toArray();
@@ -91,8 +91,8 @@ export async function getDemandBySupply(tenantId: string): Promise<MarketDemand[
     if (!market) continue;
     const r = row(market);
     r.enquiries++;
-    if (e.status === "confirmed" || e.status === "completed") r.booked++;
-    if (e.status === "lost" || e.status === "dormant") {
+    if (e.status === "confirmed" || e.status === "done") r.booked++;
+    if (e.status === "lost" || e.status === "parked") {
       r.unmet++;
       if (e.outcome?.lossReason === "no_studio_in_city") r.noStudio++;
       const type = e.brief?.shootType ?? "unknown";

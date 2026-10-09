@@ -2,7 +2,7 @@ import { enquiriesCol } from "@/lib/db/collections";
 import { commissionFor, estimatedValue } from "@/lib/money";
 
 export interface RevenueSummary {
-  /** Gross value of every won booking (Confirmed + Completed). */
+  /** Gross value of every won booking (Confirmed + Done). */
   bookedValue: number;
   /** ContCave's share of that — see lib/money.ts. */
   commission: number;
@@ -31,7 +31,7 @@ export interface RevenueSummary {
 
 /**
  * Money made so far. A booking counts once it's won (Confirmed), and is
- * split by whether the shoot has happened yet (Completed) — so "what we've
+ * split by whether the shoot has happened yet (Done) — so "what we've
  * made" and "what's in the bag but not yet delivered" read separately.
  * Cancelled bookings drop out entirely.
  */
@@ -39,13 +39,13 @@ export async function getRevenueSummary(tenantId: string): Promise<RevenueSummar
   const enquiries = await enquiriesCol();
   const won = await enquiries
     .find(
-      { tenantId, status: { $in: ["confirmed", "completed"] } },
+      { tenantId, status: { $in: ["confirmed", "done"] } },
       { projection: { status: 1, booking: 1 } }
     )
     .toArray();
   const live = await enquiries
     .find(
-      { tenantId, status: { $in: ["new_lead", "in_progress", "on_hold"] } },
+      { tenantId, status: { $in: ["new", "talking", "options_sent"] } },
       { projection: { shortlist: 1, "brief.budgetMin": 1, "brief.budgetMax": 1 } }
     )
     .toArray();
@@ -76,7 +76,7 @@ export async function getRevenueSummary(tenantId: string): Promise<RevenueSummar
     if (!e.booking?.grossValue && e.booking?.commissionValue == null) summary.missingValueCount++;
     summary.bookedValue += gross;
     summary.commission += commission;
-    if (e.status === "completed") {
+    if (e.status === "done") {
       summary.completedValue += gross;
       summary.completedCommission += commission;
       summary.completedCount++;

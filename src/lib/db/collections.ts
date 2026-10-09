@@ -7,6 +7,7 @@ import type { StudioDoc } from "@/lib/validation/studio";
 import type { EnquiryDoc } from "@/lib/validation/enquiry";
 import type { ActivityDoc } from "@/lib/validation/activity";
 import type { UserDoc } from "@/lib/validation/user";
+import type { WorkflowSettings } from "@/lib/validation/settings";
 
 export type UserMongo = Mongo<UserDoc> & { passwordHash: string };
 export type BrandMongo = Mongo<BrandDoc>;
@@ -19,6 +20,14 @@ export type ActivityMongo = Mongo<ActivityDoc>;
 export interface CounterDoc {
   _id: string; // e.g. "ENQ-2026"
   seq: number;
+}
+
+/** One document per tenant, keyed by tenantId. */
+export interface SettingsDoc {
+  _id: string;
+  workflow?: Partial<WorkflowSettings>;
+  updatedAt?: Date;
+  updatedBy?: string;
 }
 
 export async function usersCol(): Promise<Collection<UserMongo>> {
@@ -41,4 +50,7 @@ export async function activitiesCol(): Promise<Collection<ActivityMongo>> {
 }
 export async function countersCol(): Promise<Collection<CounterDoc>> {
   return (await getDb()).collection<CounterDoc>("counters");
+}
+export async function settingsCol(): Promise<Collection<SettingsDoc>> {
+  return (await getDb()).collection<SettingsDoc>("settings");
 }

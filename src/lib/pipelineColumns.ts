@@ -1,18 +1,15 @@
-import type { EnquiryStatus } from "@/lib/enums";
-import { allowedNextStatuses } from "@/lib/stateMachine/enquiryStatus";
+import type { EnquiryStatus, LogOutcome } from "@/lib/enums";
 
 /**
- * The Pipeline board's columns. Each groups one or more enquiry statuses,
- * so moving a card between columns *is* a status change — through the same
- * state machine as the status dropdown on the enquiry page. Client-safe.
+ * The Pipeline board's columns — one per open stage, plus Closed (the last
+ * 30 days of Done / Lost / Cancelled; the full history is on the Enquiries
+ * page) and Parked (collapsed, out of every count). Client-safe.
  *
- * "Follow up" is On Hold — live leads waiting on them. Dormant leads (gone
- * quiet, mostly dead) sit apart in "Parked": collapsed by default, and left
- * out of the open and overdue counts, so those count only work that's live.
- * "Closed" shows only the last 30 days; the full history lives on the
- * Enquiries page.
+ * A card never changes stage by being dropped somewhere: the drop opens the
+ * action that would move it there (see moveInto), and the stage follows
+ * from what's recorded — same as on the enquiry page.
  */
-export type ColumnKey = "new" | "in_progress" | "follow_up" | "confirmed" | "closed" | "parked";
+export type ColumnKey = "new" | "talking" | "options_sent" | "confirmed" | "closed" | "parked";
 
 export interface ColumnDef {
   key: ColumnKey;
@@ -23,52 +20,47 @@ export interface ColumnDef {
 }
 
 export const PIPELINE_COLUMNS: ColumnDef[] = [
-  { key: "new", title: "New leads", hint: "Reply first", statuses: ["new_lead"] },
-  { key: "in_progress", title: "In progress", hint: "Talking, options sent", statuses: ["in_progress"] },
-  { key: "follow_up", title: "Follow up", hint: "Waiting on them", statuses: ["on_hold"] },
+  { key: "new", title: "New", hint: "Reply first", statuses: ["new"] },
+  { key: "talking", title: "Talking", hint: "In conversation", statuses: ["talking"] },
+  { key: "options_sent", title: "Options sent", hint: "Waiting for them to pick", statuses: ["options_sent"] },
   { key: "confirmed", title: "Confirmed", hint: "Booked, shoot ahead", statuses: ["confirmed"] },
-  { key: "closed", title: "Closed", hint: "Last 30 days", statuses: ["completed", "lost", "cancelled"] },
-  { key: "parked", title: "Parked", hint: "Gone quiet — revisit later", statuses: ["dormant"] },
+  { key: "closed", title: "Closed", hint: "Last 30 days", statuses: ["done", "lost", "cancelled"] },
+  { key: "parked", title: "Parked", hint: "Stopped replying — revive if they come back", statuses: ["parked"] },
 ];
 
 /** Columns that hold live work — what "open" and "overdue" count. */
-export const LIVE_COLUMNS: ColumnKey[] = ["new", "in_progress", "follow_up", "confirmed"];
+export const LIVE_COLUMNS: ColumnKey[] = ["new", "talking", "options_sent", "confirmed"];
 
 export function columnFor(status: EnquiryStatus): ColumnKey {
-  return PIPELINE_COLUMNS.find((c) => c.statuses.includes(status))!.key;
+  return PIPELINE_COLUMNS.find((c) => c.statuses.includes(status))?.key ?? "closed";
 }
 
 /**
- * What landing in a column means for a card coming from `from`:
- *  - "direct": one status, no questions (New, In progress).
- *  - "book": Confirmed — needs a studio, value and shoot date, so it opens
- *    the enquiry's Studios & booking card rather than guessing them.
- *  - "follow_up": asks when to chase and why, then On Hold + that date.
- *  - "park": asks why it's going quiet and when to look again, then Dormant.
- *  - "close": asks how it ended (Completed / Lost / Cancelled — whichever
- *    `from` can reach) and why.
- * Null when the card can't go there at all.
+ * What dropping a card from `from` into `column` opens:
+ *  - "log": the Log update sheet, with this outcome picked.
+ *  - "studios": the enquiry's Studios & booking card — sending options and
+ *    booking both happen there.
+ *  - "revive": the Revive form (a parked lead that's back in touch).
+ * Null when nothing ops can do moves it there (New, Parked and Done are
+ * reached only by the system).
  */
-export type ColumnMove =
-  | { kind: "direct"; to: EnquiryStatus }
-  | { kind: "book" }
-  | { kind: "follow_up" }
-  | { kind: "park" }
-  | { kind: "close"; options: EnquiryStatus[] };
-
-const DIRECT_TARGET: Partial<Record<ColumnKey, EnquiryStatus>> = {
-  new: "new_lead",
-  in_progress: "in_progress",
-};
+export type ColumnMove = { kind: "log"; outcome: LogOutcome } | { kind: "studios" } | { kind: "revive" };
 
 export function moveInto(column: ColumnKey, from: EnquiryStatus): ColumnMove | null {
   if (column === columnFor(from)) return null;
-  const allowed = allowedNextStatuses(from);
-  const direct = DIRECT_TARGET[column];
-  if (direct) return allowed.includes(direct) ? { kind: "direct", to: direct } : null;
-  if (column === "confirmed") return allowed.includes("confirmed") ? { kind: "book" } : null;
-  if (column === "follow_up") return allowed.includes("on_hold") ? { kind: "follow_up" } : null;
-  if (column === "parked") return allowed.includes("dormant") ? { kind: "park" } : null;
-  const options = (["completed", "lost", "cancelled"] as const).filter((s) => allowed.includes(s));
-  return options.length ? { kind: "close", options: [...options] } : null;
+  if (from === "parked") return column === "talking" ? { kind: "revive" } : null;
+  const open = from === "new" || from === "talking" || from === "options_sent" || from === "confirmed";
+  if (!open) return null;
+  switch (column) {
+    case "talking":
+      return from === "new" ? { kind: "log", outcome: "replied" } : null;
+    case "options_sent":
+      return from === "confirmed" ? null : { kind: "studios" };
+    case "confirmed":
+      return { kind: "studios" };
+    case "closed":
+      return { kind: "log", outcome: "not_going_ahead" };
+    default:
+      return null;
+  }
 }

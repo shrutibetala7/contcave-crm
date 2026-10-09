@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireSession } from "@/lib/session";
 import { completeFinishedShoots } from "@/lib/completeFinishedShoots";
-import { autoParkStaleLeads, FIRST_REPLY_TARGET_HOURS } from "@/lib/leadHygiene";
+import { getWorkflowSettings } from "@/lib/settings";
 import { getPipeline } from "@/lib/pipeline";
 import { getRevenueSummary } from "@/lib/revenue";
 import { PipelineBoard } from "@/components/pipeline/PipelineBoard";
@@ -25,10 +25,10 @@ export default async function PipelinePage({
   const sp = await searchParams;
 
   await completeFinishedShoots(session.tenantId);
-  await autoParkStaleLeads(session.tenantId);
-  const [{ columns, holding, users, counts }, revenue] = await Promise.all([
+  const [{ columns, holding, users, counts }, revenue, settings] = await Promise.all([
     getPipeline(session.tenantId, { ownerId: sp.owner || undefined }),
     getRevenueSummary(session.tenantId),
+    getWorkflowSettings(session.tenantId),
   ]);
 
   const due = counts.overdue + counts.dueToday;
@@ -52,7 +52,7 @@ export default async function PipelinePage({
               <>
                 {" · "}
                 <span className="font-medium text-red-700">
-                  {counts.awaitingReply} waiting over {FIRST_REPLY_TARGET_HOURS}h for a first reply
+                  {counts.awaitingReply} waiting over {settings.firstReplyHours}h for a first reply
                 </span>
               </>
             )}
@@ -65,7 +65,7 @@ export default async function PipelinePage({
 
       {holding.length > 0 && <HoldingQueue cards={holding} />}
 
-      <PipelineBoard columns={columns} />
+      <PipelineBoard columns={columns} settings={settings} />
     </div>
   );
 }

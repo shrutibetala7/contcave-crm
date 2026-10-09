@@ -17,7 +17,15 @@ const TYPE_ICON: Record<string, { icon: IconName; label: string }> = {
   visit: { icon: "pin", label: "Visit" },
   status_change: { icon: "refresh", label: "Status change" },
   system: { icon: "clock", label: "System" },
+  outcome: { icon: "check", label: "Update logged" },
+  offer_sent: { icon: "building", label: "Options sent" },
+  booking: { icon: "calendar", label: "Booking" },
+  stage_override: { icon: "refresh", label: "Stage overridden" },
+  followup: { icon: "clock", label: "Follow-up" },
 };
+
+/** Written by the workflow: the body is the CRM's auto note, meta.note is what someone typed. */
+const AUTO_NOTE_TYPES = new Set(["outcome", "offer_sent", "booking", "stage_override", "followup", "system"]);
 
 export function ActivityTimeline({
   entityType,
@@ -69,19 +77,24 @@ export function ActivityTimeline({
         <p className="text-sm text-neutral-500">No activity yet.</p>
       ) : (
         <ul className="space-y-2">
-          {activities.map((a) => (
-            <li key={a.id} className="flex gap-2 text-sm">
+          {activities.map((a) => {
+            const meta = (a.meta ?? {}) as { from?: string; to?: string; note?: string | null; undoneAt?: string };
+            const auto = AUTO_NOTE_TYPES.has(a.type);
+            return (
+            <li key={a.id} className={`flex gap-2 text-sm ${meta.undoneAt ? "opacity-50" : ""}`}>
               <span className="mt-0.5 text-neutral-500" title={TYPE_ICON[a.type]?.label}>
                 <Icon name={TYPE_ICON[a.type]?.icon ?? "note"} className="size-4" />
                 <span className="sr-only">{TYPE_ICON[a.type]?.label ?? a.type}: </span>
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-neutral-700">
-                  {a.type === "status_change" && a.meta
-                    ? `Moved from ${((a.meta as { from?: string }).from ?? "?").replace(/_/g, " ")} to ${((a.meta as { to?: string }).to ?? "?").replace(/_/g, " ")}`
+                <p className={auto ? "text-neutral-500" : "text-neutral-700"}>
+                  {a.type === "status_change" && meta.from
+                    ? `Moved from ${meta.from.replace(/_/g, " ")} to ${(meta.to ?? "?").replace(/_/g, " ")}`
                     : a.body || a.type}
+                  {meta.undoneAt && " · undone"}
                 </p>
                 {a.type === "status_change" && a.body && <p className="text-xs text-neutral-500">{a.body}</p>}
+                {auto && meta.note && <p className="text-neutral-800">{meta.note}</p>}
                 <p className="text-xs tabular-nums text-neutral-500">
                   {format(new Date(a.occurredAt), "d MMM, HH:mm")}
                   {a.type === "status_change" && isBackfilled(a.occurredAt) && (
@@ -90,7 +103,8 @@ export function ActivityTimeline({
                 </p>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

@@ -6,7 +6,9 @@ import {
   ENQUIRY_SOURCES,
   ENQUIRY_STATUSES,
   FEEDBACK_ISSUES,
+  FOLLOW_UP_KINDS,
   LOSS_REASONS,
+  NOT_GOING_AHEAD_REASONS,
   SHOOT_TYPES,
   SHORTLIST_OUTCOMES,
 } from "@/lib/enums";
@@ -63,14 +65,6 @@ export const enquiryCreateSchema = z
     // lenient on read (enquiryDocSchema) for any record from before this existed.
     enquiryDate: z.coerce.date(),
     ownerId: optionalObjectIdString,
-    nextActionDate: z.coerce.date().nullable().optional(),
-    // Change Brief v1.1 §B: a next action with no reason is a date with no
-    // context — required in the same payload whenever a date is set.
-    nextActionReason: z.string().nullable().optional(),
-  })
-  .refine((d) => d.nextActionDate == null || (d.nextActionReason?.trim().length ?? 0) >= 8, {
-    message: "nextActionReason is required (min 8 characters) whenever nextActionDate is set",
-    path: ["nextActionReason"],
   });
 export type EnquiryCreateInput = z.infer<typeof enquiryCreateSchema>;
 
@@ -143,11 +137,10 @@ export type BookStudioInput = z.infer<typeof bookStudioSchema>;
 
 // ---- enquiry update ---------------------------------------------------------
 
-// status, shortlist, schedule.delayEvents and feedback are all mutated
-// through their own dedicated endpoints (spec §5). outcome.result is only
-// ever set by a status transition (it's guarded). booking has no dedicated
-// endpoint in spec §5, so it's set here — it must exist before a
-// transition to "confirmed" can pass that guard (spec §4.1).
+// Stage and follow-up are never edited here — they move only through the
+// workflow actions (Log update, options sent, booking, revive, override;
+// see lib/enquiryActions.ts). shortlist, delays and feedback have their own
+// endpoints too. This is for the brief, owner and booking details.
 export const enquiryUpdateSchema = z
   .object({
     brandId: optionalObjectIdString,
@@ -159,14 +152,6 @@ export const enquiryUpdateSchema = z
     booking: patchOf(bookingSchema).optional(),
     enquiryDate: z.coerce.date().optional(),
     ownerId: optionalObjectIdString,
-    nextActionDate: z.coerce.date().nullable().optional(),
-    nextActionReason: z.string().nullable().optional(),
-    lastContactedAt: z.coerce.date().nullable().optional(),
-    firstResponseAt: z.coerce.date().nullable().optional(),
-  })
-  .refine((d) => d.nextActionDate == null || (d.nextActionReason?.trim().length ?? 0) >= 8, {
-    message: "nextActionReason is required (min 8 characters) whenever nextActionDate is set",
-    path: ["nextActionReason"],
   });
 export type EnquiryUpdateInput = z.infer<typeof enquiryUpdateSchema>;
 
@@ -274,22 +259,63 @@ export const feedbackSchema = z.object({
 });
 export type Feedback = z.infer<typeof feedbackSchema>;
 
-// ---- status transition ------------------------------------------------------------
+// ---- follow-up ---------------------------------------------------------------------
 
-export const statusChangeSchema = z.object({
-  to: z.string(),
-  note: z.string().nullable().optional(),
-  // guard payloads — only the relevant ones are required per-transition,
-  // enforced in lib/stateMachine/enquiryStatus.ts
-  lossReason: z.enum(LOSS_REASONS).nullable().optional(),
-  lossNote: z.string().nullable().optional(),
-  competitorName: z.string().nullable().optional(),
-  cancelReason: z.enum(CANCEL_REASONS).nullable().optional(),
-  cancelNote: z.string().nullable().optional(),
-  nextActionDate: z.coerce.date().nullable().optional(),
-  nextActionReason: z.string().nullable().optional(),
+/**
+ * The one open follow-up an open enquiry always has. `allDay` follow-ups are
+ * due on a calendar day (stored as UTC midnight of that India date, like
+ * every other date here) and only go overdue the day after; timed ones
+ * (first reply, the check after sending options) go overdue at `dueAt`.
+ */
+export const followUpSchema = z.object({
+  kind: z.enum(FOLLOW_UP_KINDS),
+  label: z.string(),
+  dueAt: z.coerce.date(),
+  allDay: z.boolean(),
+  createdAt: z.coerce.date(),
+  createdBy: z.string(),
 });
-export type StatusChangeInput = z.infer<typeof statusChangeSchema>;
+export type FollowUp = z.infer<typeof followUpSchema>;
+
+// ---- workflow actions ------------------------------------------------------------------
+
+const note = z.string().trim().max(500).nullable().optional();
+
+/** Log update: one outcome, its one input, an optional note. */
+export const logUpdateSchema = z.discriminatedUnion("outcome", [
+  z.object({ outcome: z.literal("no_reply"), note }),
+  z.object({ outcome: z.literal("replied"), followUpOn: z.coerce.date(), note }),
+  z.object({ outcome: z.literal("postponed"), shootDate: z.coerce.date(), note }),
+  z.object({ outcome: z.literal("not_going_ahead"), reason: z.enum(NOT_GOING_AHEAD_REASONS), note }),
+]);
+export type LogUpdateInput = z.infer<typeof logUpdateSchema>;
+
+export const optionsSentSchema = z.object({ note });
+export const reviveSchema = z.object({ followUpOn: z.coerce.date(), note });
+export const rescheduleFollowUpSchema = z.object({ dueOn: z.coerce.date(), label: z.string().trim().min(1).max(120).optional() });
+
+/** Admin only: put an enquiry in a stage directly, with a reason on the record. */
+export const overrideStageSchema = z
+  .object({
+    to: z.enum(ENQUIRY_STATUSES),
+    reason: z.string().trim().min(3, "Say why (a few words)"),
+    followUpOn: z.coerce.date().nullable().optional(),
+    lossReason: z.enum(LOSS_REASONS).nullable().optional(),
+    cancelReason: z.enum(CANCEL_REASONS).nullable().optional(),
+  })
+  .refine((d) => !["new", "talking", "options_sent", "confirmed"].includes(d.to) || d.followUpOn != null, {
+    message: "An open stage needs a follow-up date",
+    path: ["followUpOn"],
+  })
+  .refine((d) => (d.to !== "lost" && d.to !== "parked") || d.lossReason != null, {
+    message: "Choose a reason",
+    path: ["lossReason"],
+  })
+  .refine((d) => d.to !== "cancelled" || d.cancelReason != null, {
+    message: "Choose a reason",
+    path: ["cancelReason"],
+  });
+export type OverrideStageInput = z.infer<typeof overrideStageSchema>;
 
 // ---- full stored document -----------------------------------------------------------
 
@@ -314,8 +340,14 @@ export const enquiryDocSchema = z.object({
   // Lenient here (unlike enquiryCreateSchema) — old records predate this field.
   enquiryDate: z.coerce.date().nullable().optional(),
   ownerId: optionalObjectIdString,
-  nextActionDate: z.date().nullable().optional(),
-  nextActionReason: z.string().nullable().optional(),
+  /** Required on every open enquiry; null once closed (except post-shoot tasks on Done). */
+  followUp: followUpSchema.nullable().optional(),
+  /** No-replies logged in a row, and when the first of them was — the cadence counts from there. */
+  noReplyCount: z.number().default(0),
+  noReplyStartedAt: z.date().nullable().optional(),
+  lastActivityAt: z.date().nullable().optional(),
+  /** Last workflow activity — Undo only applies while nothing has happened since. */
+  lastActivityId: z.string().nullable().optional(),
   lastContactedAt: z.date().nullable().optional(),
   firstResponseAt: z.date().nullable().optional(),
   createdAt: z.date(),

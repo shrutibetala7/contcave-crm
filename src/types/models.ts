@@ -28,7 +28,9 @@ export type {
   DelayCreateInput,
   DelayUpdateInput,
   Feedback,
-  StatusChangeInput,
+  FollowUp,
+  LogUpdateInput,
+  OverrideStageInput,
   FieldEvidence,
 } from "@/lib/validation/enquiry";
 export type { ActivityDoc, ActivityCreateInput } from "@/lib/validation/activity";

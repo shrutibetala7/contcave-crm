@@ -34,3 +34,10 @@ export function estimatedValue(e: {
   if (live.length) return Math.max(...live.map((s) => s.quotedAmount!));
   return e.brief?.budgetMax || e.brief?.budgetMin || null;
 }
+
+/** GST on bookings and on our commission. Every amount stored in the CRM is before GST. */
+export const GST_RATE = 0.18;
+
+export function withGst(amount: number): number {
+  return Math.round(amount * (1 + GST_RATE));
+}

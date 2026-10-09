@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/apiClient";
 import { dayKey, formatShortDay } from "@/lib/businessDay";
-import { COMMISSION_RATE_LABEL, commissionFor, formatINR } from "@/lib/money";
+import { COMMISSION_RATE_LABEL, commissionFor, formatINR, withGst } from "@/lib/money";
 import type { EnquiryStatus, ShortlistOutcome } from "@/lib/enums";
 import type { Booking, ShortlistEntryDoc } from "@/types/models";
 import { celebrate } from "@/lib/celebrate";
@@ -195,10 +195,12 @@ export function StudiosAndBooking({
             <div>
               <dt className="text-xs text-neutral-500">Booking value</dt>
               <dd className="tabular-nums text-neutral-900">{booking.grossValue ? formatINR(booking.grossValue) : "—"}</dd>
+              {booking.grossValue ? <dd className="text-xs tabular-nums text-neutral-500">({formatINR(withGst(booking.grossValue))} with GST)</dd> : null}
             </div>
             <div>
               <dt className="text-xs text-neutral-500">Our commission ({COMMISSION_RATE_LABEL})</dt>
               <dd className="tabular-nums text-neutral-900">{booking.grossValue ? formatINR(commissionFor(booking)) : "—"}</dd>
+              {booking.grossValue ? <dd className="text-xs tabular-nums text-neutral-500">({formatINR(withGst(commissionFor(booking)))} with GST)</dd> : null}
             </div>
             <div>
               <dt className="text-xs text-neutral-500">Shoot</dt>
